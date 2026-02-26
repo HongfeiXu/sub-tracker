@@ -1,18 +1,15 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 
 // ============================================================
 // Types
 // ============================================================
 
 type Currency = 'CNY' | 'USD'
-
 type BillingCycle = 'monthly' | 'quarterly' | 'yearly' | 'custom'
-
 type SubscriptionStatus = 'active' | 'cancelled'
-
 type ThemeMode = 'auto' | 'light' | 'dark'
-
 type TabView = 'dashboard' | 'subscriptions'
+type SubStatusFilter = 'active' | 'cancelled'
 
 interface Subscription {
   id: string
@@ -55,8 +52,43 @@ const DEFAULT_CATEGORIES: Category[] = [
   { name: '其他', color: '#A78BFA' },
 ]
 
+const COLOR_PALETTE = ['#FF6B8A', '#5B9EF4', '#47D4A0', '#FFB74D', '#A78BFA', '#F472B6', '#34D399', '#FBBF24', '#818CF8', '#FB923C']
+
+const BRAND_COLORS: Record<string, string> = {
+  netflix: '#E50914',
+  spotify: '#1DB954',
+  icloud: '#3693F3',
+  apple: '#555555',
+  youtube: '#FF0000',
+  chatgpt: '#10A37F',
+  openai: '#10A37F',
+  claude: '#D97757',
+  notion: '#000000',
+  github: '#24292E',
+  figma: '#A259FF',
+  adobe: '#FF0000',
+  bilibili: '#FB7299',
+  b站: '#FB7299',
+  爱奇艺: '#00BE06',
+  腾讯视频: '#FF6A1E',
+  优酷: '#1EBFFF',
+  网易云音乐: '#C20C0C',
+  qq音乐: '#31C27C',
+  百度网盘: '#06A7FF',
+  wps: '#1B6DF1',
+  微信读书: '#2A8745',
+  京东: '#E4393C',
+}
+
+const CYCLE_LABELS: Record<BillingCycle, string> = {
+  monthly: '月付',
+  quarterly: '季付',
+  yearly: '年付',
+  custom: '自定义',
+}
+
 // ============================================================
-// localStorage Utilities
+// Utility Functions
 // ============================================================
 
 function loadFromStorage<T>(key: string, fallback: T): T {
@@ -73,6 +105,68 @@ function saveToStorage<T>(key: string, value: T): void {
   localStorage.setItem(key, JSON.stringify(value))
 }
 
+function matchBrandColor(name: string): string | null {
+  const lower = name.toLowerCase().trim()
+  if (!lower) return null
+  for (const [keyword, color] of Object.entries(BRAND_COLORS)) {
+    if (lower.includes(keyword)) return color
+  }
+  return null
+}
+
+function calculateNextBillDate(startDate: string, cycle: BillingCycle, customDays?: number): string {
+  const start = new Date(startDate)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  if (cycle === 'custom' && customDays && customDays > 0) {
+    const startMs = start.getTime()
+    const todayMs = today.getTime()
+    const cyclMs = customDays * 86400000
+    const elapsed = todayMs - startMs
+    const periods = Math.ceil(elapsed / cyclMs)
+    const next = new Date(startMs + periods * cyclMs)
+    if (next <= today) next.setTime(next.getTime() + cyclMs)
+    return next.toISOString().split('T')[0]
+  }
+
+  const monthsMap: Record<string, number> = { monthly: 1, quarterly: 3, yearly: 12 }
+  const months = monthsMap[cycle] ?? 1
+  const candidate = new Date(start)
+
+  // Advance to the first future date
+  while (candidate <= today) {
+    candidate.setMonth(candidate.getMonth() + months)
+  }
+  return candidate.toISOString().split('T')[0]
+}
+
+function getAllCategories(customCategories: Category[]): Category[] {
+  const merged = [...DEFAULT_CATEGORIES]
+  for (const cat of customCategories) {
+    if (!merged.some((c) => c.name === cat.name)) {
+      merged.push(cat)
+    }
+  }
+  return merged
+}
+
+function assignCategoryColor(existingCategories: Category[]): string {
+  const usedColors = new Set(existingCategories.map((c) => c.color))
+  const available = COLOR_PALETTE.find((c) => !usedColors.has(c))
+  if (available) return available
+  return COLOR_PALETTE[existingCategories.length % COLOR_PALETTE.length]
+}
+
+function formatDate(dateStr: string): string {
+  const d = new Date(dateStr)
+  return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function todayString(): string {
+  return new Date().toISOString().split('T')[0]
+}
+
 // ============================================================
 // Theme Management
 // ============================================================
@@ -87,7 +181,7 @@ function applyTheme(mode: ThemeMode): void {
 }
 
 // ============================================================
-// Icons (inline SVG components)
+// Icons
 // ============================================================
 
 function SettingsIcon() {
@@ -104,6 +198,23 @@ function PlusIcon() {
     <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <line x1="12" y1="5" x2="12" y2="19" />
       <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  )
+}
+
+function ChevronRightIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
+  )
+}
+
+function CloseIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
     </svg>
   )
 }
@@ -131,7 +242,6 @@ function TabBar({ activeTab, onTabChange }: { activeTab: TabView; onTabChange: (
     { key: 'dashboard', label: '总览' },
     { key: 'subscriptions', label: '订阅列表' },
   ]
-
   return (
     <div className="flex mx-5 mb-4 p-1 rounded-xl bg-[var(--color-card)]">
       {tabs.map((tab) => (
@@ -162,11 +272,437 @@ function FAB({ onClick }: { onClick: () => void }) {
   )
 }
 
+// --- Confirm Dialog ---
+
+function ConfirmDialog({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={onCancel}>
+      <div className="bg-[var(--color-card)] rounded-2xl p-6 mx-6 max-w-sm w-full shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <p className="text-sm text-[var(--color-text-primary)] mb-5">{message}</p>
+        <div className="flex gap-3">
+          <button onClick={onCancel} className="flex-1 py-2.5 text-sm rounded-xl border border-[var(--color-divider)] text-[var(--color-text-secondary)]">
+            取消
+          </button>
+          <button onClick={onConfirm} className="flex-1 py-2.5 text-sm rounded-xl bg-red-500 text-white">
+            确认删除
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// --- Subscription Card ---
+
+function SubscriptionCard({ sub, onClick }: { sub: Subscription; onClick: () => void }) {
+  const isCancelled = sub.status === 'cancelled'
+  const cycleSuffix = sub.cycle === 'custom' && sub.customCycleDays ? `${sub.customCycleDays}天` : CYCLE_LABELS[sub.cycle]
+  const currencySymbol = sub.currency === 'CNY' ? '¥' : '$'
+
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full text-left flex items-center gap-4 p-4 rounded-2xl bg-[var(--color-card)] transition-colors hover:opacity-90 ${isCancelled ? 'opacity-50 grayscale' : ''}`}
+    >
+      <div className="w-11 h-11 rounded-xl flex items-center justify-center text-white font-bold text-lg shrink-0" style={{ backgroundColor: sub.color }}>
+        {sub.name.charAt(0).toUpperCase()}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">{sub.name}</p>
+        <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">
+          {currencySymbol} {sub.amount.toFixed(2)} / {cycleSuffix}
+        </p>
+        <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">
+          {isCancelled ? `已取消：${sub.cancelledDate ?? ''}` : `续费日：${formatDate(sub.nextBillDate)}`}
+          {' · '}{sub.category}
+        </p>
+      </div>
+      <div className="text-[var(--color-text-secondary)]">
+        <ChevronRightIcon />
+      </div>
+    </button>
+  )
+}
+
+// --- Subscriptions View ---
+
+function SubscriptionsView({
+  subscriptions,
+  onEdit,
+}: {
+  subscriptions: Subscription[]
+  onEdit: (id: string) => void
+}) {
+  const [filter, setFilter] = useState<SubStatusFilter>('active')
+
+  const filtered = useMemo(
+    () => subscriptions.filter((s) => s.status === filter),
+    [subscriptions, filter],
+  )
+
+  return (
+    <div>
+      <div className="flex p-1 rounded-xl bg-[var(--color-card)] mb-4">
+        {(['active', 'cancelled'] as const).map((status) => (
+          <button
+            key={status}
+            onClick={() => setFilter(status)}
+            className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
+              filter === status
+                ? 'bg-[var(--color-accent)] text-white'
+                : 'text-[var(--color-text-secondary)]'
+            }`}
+          >
+            {status === 'active' ? '生效中' : '已取消'}
+          </button>
+        ))}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-[var(--color-text-secondary)]">
+          <p className="text-sm">{filter === 'active' ? '暂无生效中的订阅' : '暂无已取消的订阅'}</p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {filtered.map((sub) => (
+            <SubscriptionCard key={sub.id} sub={sub} onClick={() => onEdit(sub.id)} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// --- Subscription Drawer ---
+
+interface DrawerProps {
+  open: boolean
+  editingSub: Subscription | null
+  allCategories: Category[]
+  onSave: (data: Omit<Subscription, 'id' | 'createdAt' | 'updatedAt' | 'nextBillDate' | 'status' | 'cancelledDate'>) => void
+  onUpdate: (id: string, data: Partial<Subscription>) => void
+  onDelete: (id: string) => void
+  onCancel: () => void
+  onToggleStatus: (id: string) => void
+  onAddCategory: (name: string) => void
+}
+
+function SubscriptionDrawer({ open, editingSub, allCategories, onSave, onUpdate, onDelete, onCancel, onToggleStatus, onAddCategory }: DrawerProps) {
+  const [name, setName] = useState('')
+  const [amount, setAmount] = useState('')
+  const [currency, setCurrency] = useState<Currency>('CNY')
+  const [cycle, setCycle] = useState<BillingCycle>('monthly')
+  const [customDays, setCustomDays] = useState('')
+  const [startDate, setStartDate] = useState(todayString())
+  const [category, setCategory] = useState(DEFAULT_CATEGORIES[0].name)
+  const [color, setColor] = useState(DEFAULT_CATEGORIES[0].color)
+  const [note, setNote] = useState('')
+  const [showNewCategory, setShowNewCategory] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+
+  // Reset form when opening
+  useEffect(() => {
+    if (!open) return
+    if (editingSub) {
+      setName(editingSub.name)
+      setAmount(String(editingSub.amount))
+      setCurrency(editingSub.currency)
+      setCycle(editingSub.cycle)
+      setCustomDays(editingSub.customCycleDays ? String(editingSub.customCycleDays) : '')
+      setStartDate(editingSub.startDate)
+      setCategory(editingSub.category)
+      setColor(editingSub.color)
+      setNote(editingSub.note ?? '')
+    } else {
+      setName('')
+      setAmount('')
+      setCurrency('CNY')
+      setCycle('monthly')
+      setCustomDays('')
+      setStartDate(todayString())
+      setCategory(DEFAULT_CATEGORIES[0].name)
+      setColor(DEFAULT_CATEGORIES[0].color)
+      setNote('')
+    }
+    setShowNewCategory(false)
+    setNewCategoryName('')
+    setShowDeleteConfirm(false)
+  }, [open, editingSub])
+
+  // Brand color matching on name change
+  useEffect(() => {
+    if (editingSub) return // don't auto-change color when editing
+    const brandColor = matchBrandColor(name)
+    if (brandColor) {
+      setColor(brandColor)
+    } else {
+      const cat = allCategories.find((c) => c.name === category)
+      if (cat) setColor(cat.color)
+    }
+  }, [name, category, allCategories, editingSub])
+
+  const previewNextBillDate = useMemo(() => {
+    if (!startDate) return ''
+    const days = cycle === 'custom' ? parseInt(customDays) : undefined
+    if (cycle === 'custom' && (!days || days <= 0)) return ''
+    return calculateNextBillDate(startDate, cycle, days)
+  }, [startDate, cycle, customDays])
+
+  const handleSave = () => {
+    const amt = parseFloat(amount)
+    if (!name.trim() || isNaN(amt) || amt <= 0 || !startDate || !category) return
+    if (cycle === 'custom') {
+      const d = parseInt(customDays)
+      if (isNaN(d) || d <= 0) return
+    }
+
+    const data = {
+      name: name.trim(),
+      amount: amt,
+      currency,
+      cycle,
+      customCycleDays: cycle === 'custom' ? parseInt(customDays) : undefined,
+      startDate,
+      category,
+      color,
+      note: note.trim() || undefined,
+    }
+
+    if (editingSub) {
+      onUpdate(editingSub.id, { ...data, updatedAt: new Date().toISOString(), nextBillDate: previewNextBillDate })
+    } else {
+      onSave(data)
+    }
+  }
+
+  const handleAddCategory = () => {
+    const trimmed = newCategoryName.trim()
+    if (!trimmed) return
+    if (allCategories.some((c) => c.name === trimmed)) return
+    onAddCategory(trimmed)
+    setCategory(trimmed)
+    setShowNewCategory(false)
+    setNewCategoryName('')
+  }
+
+  if (!open) return null
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div className="fixed inset-0 z-50 bg-black/50" onClick={onCancel} />
+
+      {/* Drawer */}
+      <div className="fixed inset-x-0 bottom-0 z-50 bg-[var(--color-bg)] rounded-t-3xl max-h-[90vh] overflow-y-auto animate-slide-up">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-divider)]">
+          <h2 className="text-lg font-bold text-[var(--color-text-primary)]">
+            {editingSub ? '编辑订阅' : '添加订阅'}
+          </h2>
+          <button onClick={onCancel} className="p-1 text-[var(--color-text-secondary)]">
+            <CloseIcon />
+          </button>
+        </div>
+
+        {/* Form */}
+        <div className="px-5 py-4 space-y-4">
+          {/* Name */}
+          <div>
+            <label className="block text-xs text-[var(--color-text-secondary)] mb-1.5">名称 *</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="如 Netflix、Spotify"
+              className="w-full px-4 py-3 rounded-xl bg-[var(--color-card)] text-sm text-[var(--color-text-primary)] border border-[var(--color-divider)] outline-none focus:border-[var(--color-accent)]"
+            />
+          </div>
+
+          {/* Amount + Currency */}
+          <div>
+            <label className="block text-xs text-[var(--color-text-secondary)] mb-1.5">金额 *</label>
+            <div className="flex gap-2">
+              <div className="flex rounded-xl border border-[var(--color-divider)] overflow-hidden">
+                {(['CNY', 'USD'] as const).map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setCurrency(c)}
+                    className={`px-3 py-3 text-xs font-medium transition-colors ${
+                      currency === c ? 'bg-[var(--color-accent)] text-white' : 'bg-[var(--color-card)] text-[var(--color-text-secondary)]'
+                    }`}
+                  >
+                    {c === 'CNY' ? '¥' : '$'}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.00"
+                step="0.01"
+                min="0"
+                className="flex-1 px-4 py-3 rounded-xl bg-[var(--color-card)] text-sm text-[var(--color-text-primary)] border border-[var(--color-divider)] outline-none focus:border-[var(--color-accent)]"
+              />
+            </div>
+          </div>
+
+          {/* Billing Cycle */}
+          <div>
+            <label className="block text-xs text-[var(--color-text-secondary)] mb-1.5">计费周期 *</label>
+            <div className="flex gap-2 flex-wrap">
+              {(['monthly', 'quarterly', 'yearly', 'custom'] as const).map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setCycle(c)}
+                  className={`px-4 py-2.5 text-xs font-medium rounded-xl transition-colors ${
+                    cycle === c ? 'bg-[var(--color-accent)] text-white' : 'bg-[var(--color-card)] text-[var(--color-text-secondary)] border border-[var(--color-divider)]'
+                  }`}
+                >
+                  {CYCLE_LABELS[c]}
+                </button>
+              ))}
+            </div>
+            {cycle === 'custom' && (
+              <input
+                type="number"
+                value={customDays}
+                onChange={(e) => setCustomDays(e.target.value)}
+                placeholder="天数"
+                min="1"
+                className="mt-2 w-32 px-4 py-3 rounded-xl bg-[var(--color-card)] text-sm text-[var(--color-text-primary)] border border-[var(--color-divider)] outline-none focus:border-[var(--color-accent)]"
+              />
+            )}
+          </div>
+
+          {/* Start Date */}
+          <div>
+            <label className="block text-xs text-[var(--color-text-secondary)] mb-1.5">起始日期 *</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl bg-[var(--color-card)] text-sm text-[var(--color-text-primary)] border border-[var(--color-divider)] outline-none focus:border-[var(--color-accent)]"
+            />
+            {previewNextBillDate && (
+              <p className="text-xs text-[var(--color-accent)] mt-1.5">下次扣款日：{previewNextBillDate}</p>
+            )}
+          </div>
+
+          {/* Category */}
+          <div>
+            <label className="block text-xs text-[var(--color-text-secondary)] mb-1.5">分类 *</label>
+            <div className="flex gap-2 flex-wrap">
+              {allCategories.map((cat) => (
+                <button
+                  key={cat.name}
+                  onClick={() => { setCategory(cat.name); if (!editingSub && !matchBrandColor(name)) setColor(cat.color) }}
+                  className={`px-3 py-2 text-xs font-medium rounded-xl transition-colors ${
+                    category === cat.name ? 'text-white' : 'bg-[var(--color-card)] text-[var(--color-text-secondary)] border border-[var(--color-divider)]'
+                  }`}
+                  style={category === cat.name ? { backgroundColor: cat.color } : undefined}
+                >
+                  {cat.name}
+                </button>
+              ))}
+              <button
+                onClick={() => setShowNewCategory(true)}
+                className="px-3 py-2 text-xs font-medium rounded-xl bg-[var(--color-card)] text-[var(--color-accent)] border border-dashed border-[var(--color-accent)]"
+              >
+                + 新分类
+              </button>
+            </div>
+            {showNewCategory && (
+              <div className="flex gap-2 mt-2">
+                <input
+                  type="text"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  placeholder="分类名称"
+                  className="flex-1 px-3 py-2 rounded-xl bg-[var(--color-card)] text-sm text-[var(--color-text-primary)] border border-[var(--color-divider)] outline-none focus:border-[var(--color-accent)]"
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleAddCategory() }}
+                  autoFocus
+                />
+                <button onClick={handleAddCategory} className="px-3 py-2 text-xs rounded-xl bg-[var(--color-accent)] text-white">
+                  添加
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Color Picker */}
+          <div>
+            <label className="block text-xs text-[var(--color-text-secondary)] mb-1.5">卡片颜色</label>
+            <div className="flex gap-2 flex-wrap">
+              {COLOR_PALETTE.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setColor(c)}
+                  className={`w-8 h-8 rounded-lg transition-transform ${color === c ? 'ring-2 ring-offset-2 ring-[var(--color-accent)] scale-110' : ''}`}
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Note */}
+          <div>
+            <label className="block text-xs text-[var(--color-text-secondary)] mb-1.5">备注</label>
+            <input
+              type="text"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="可选"
+              className="w-full px-4 py-3 rounded-xl bg-[var(--color-card)] text-sm text-[var(--color-text-primary)] border border-[var(--color-divider)] outline-none focus:border-[var(--color-accent)]"
+            />
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="px-5 py-4 border-t border-[var(--color-divider)] space-y-3">
+          <div className="flex gap-3">
+            <button onClick={onCancel} className="flex-1 py-3 text-sm font-medium rounded-xl border border-[var(--color-divider)] text-[var(--color-text-secondary)]">
+              取消
+            </button>
+            <button onClick={handleSave} className="flex-1 py-3 text-sm font-medium rounded-xl bg-[var(--color-accent)] text-white">
+              保存
+            </button>
+          </div>
+          {editingSub && (
+            <div className="flex gap-3">
+              <button
+                onClick={() => onToggleStatus(editingSub.id)}
+                className="flex-1 py-3 text-sm font-medium rounded-xl border border-[var(--color-divider)] text-[var(--color-text-primary)]"
+              >
+                {editingSub.status === 'active' ? '标记为已取消' : '重新激活'}
+              </button>
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="py-3 px-5 text-sm font-medium rounded-xl bg-red-500/10 text-red-500"
+              >
+                删除
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {showDeleteConfirm && editingSub && (
+        <ConfirmDialog
+          message={`确定要删除「${editingSub.name}」吗？此操作不可撤销。`}
+          onConfirm={() => { onDelete(editingSub.id); setShowDeleteConfirm(false) }}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
+      )}
+    </>
+  )
+}
+
 // ============================================================
 // App
 // ============================================================
 
-// Mark types as used — they will be actively used in Phase 2+
 export { DEFAULT_CATEGORIES }
 export type { Subscription, Category, Currency, BillingCycle, SubscriptionStatus }
 
@@ -174,34 +710,81 @@ export default function App() {
   const [theme, setTheme] = useState<ThemeMode>(() => loadFromStorage(STORAGE_KEYS.THEME, 'auto' as ThemeMode))
   const [activeTab, setActiveTab] = useState<TabView>('dashboard')
   const [showSettings, setShowSettings] = useState(false)
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>(() => loadFromStorage(STORAGE_KEYS.SUBSCRIPTIONS, [] as Subscription[]))
+  const [customCategories, setCustomCategories] = useState<Category[]>(() => loadFromStorage(STORAGE_KEYS.CATEGORIES, [] as Category[]))
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
-  // Apply theme on mount and when theme changes
-  useEffect(() => {
-    applyTheme(theme)
-    saveToStorage(STORAGE_KEYS.THEME, theme)
-  }, [theme])
+  const allCategories = useMemo(() => getAllCategories(customCategories), [customCategories])
+  const editingSub = useMemo(() => editingId ? subscriptions.find((s) => s.id === editingId) ?? null : null, [editingId, subscriptions])
 
-  // Listen for system theme changes when in auto mode
+  // Persist subscriptions
+  useEffect(() => { saveToStorage(STORAGE_KEYS.SUBSCRIPTIONS, subscriptions) }, [subscriptions])
+  // Persist custom categories
+  useEffect(() => { saveToStorage(STORAGE_KEYS.CATEGORIES, customCategories) }, [customCategories])
+  // Theme
+  useEffect(() => { applyTheme(theme); saveToStorage(STORAGE_KEYS.THEME, theme) }, [theme])
   useEffect(() => {
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const handler = () => {
-      if (theme === 'auto') applyTheme('auto')
-    }
+    const handler = () => { if (theme === 'auto') applyTheme('auto') }
     mq.addEventListener('change', handler)
     return () => mq.removeEventListener('change', handler)
   }, [theme])
 
-  const handleSettingsClick = useCallback(() => {
-    setShowSettings((prev) => !prev)
-  }, [])
+  const handleSettingsClick = useCallback(() => setShowSettings((p) => !p), [])
 
-  // Temporary theme cycling for testing (will be replaced by settings panel in Phase 4)
   const cycleTheme = useCallback(() => {
     setTheme((prev) => {
       const order: ThemeMode[] = ['auto', 'light', 'dark']
       return order[(order.indexOf(prev) + 1) % order.length]
     })
   }, [])
+
+  const openNewDrawer = useCallback(() => { setEditingId(null); setDrawerOpen(true) }, [])
+  const openEditDrawer = useCallback((id: string) => { setEditingId(id); setDrawerOpen(true) }, [])
+  const closeDrawer = useCallback(() => { setDrawerOpen(false); setEditingId(null) }, [])
+
+  const handleSave = useCallback((data: Omit<Subscription, 'id' | 'createdAt' | 'updatedAt' | 'nextBillDate' | 'status' | 'cancelledDate'>) => {
+    const now = new Date().toISOString()
+    const nextBillDate = calculateNextBillDate(data.startDate, data.cycle, data.customCycleDays)
+    const newSub: Subscription = {
+      ...data,
+      id: crypto.randomUUID(),
+      nextBillDate,
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+    }
+    setSubscriptions((prev) => [...prev, newSub])
+    closeDrawer()
+  }, [closeDrawer])
+
+  const handleUpdate = useCallback((id: string, data: Partial<Subscription>) => {
+    setSubscriptions((prev) => prev.map((s) => s.id === id ? { ...s, ...data, updatedAt: new Date().toISOString() } : s))
+    closeDrawer()
+  }, [closeDrawer])
+
+  const handleDelete = useCallback((id: string) => {
+    setSubscriptions((prev) => prev.filter((s) => s.id !== id))
+    closeDrawer()
+  }, [closeDrawer])
+
+  const handleToggleStatus = useCallback((id: string) => {
+    setSubscriptions((prev) => prev.map((s) => {
+      if (s.id !== id) return s
+      if (s.status === 'active') {
+        return { ...s, status: 'cancelled' as const, cancelledDate: todayString(), nextBillDate: '', updatedAt: new Date().toISOString() }
+      }
+      const nextBillDate = calculateNextBillDate(s.startDate, s.cycle, s.customCycleDays)
+      return { ...s, status: 'active' as const, cancelledDate: undefined, nextBillDate, updatedAt: new Date().toISOString() }
+    }))
+    closeDrawer()
+  }, [closeDrawer])
+
+  const handleAddCategory = useCallback((name: string) => {
+    const color = assignCategoryColor(allCategories)
+    setCustomCategories((prev) => [...prev, { name, color }])
+  }, [allCategories])
 
   return (
     <div className="min-h-screen bg-[var(--color-bg)] font-sans transition-colors">
@@ -216,13 +799,10 @@ export default function App() {
               <p className="text-sm">Phase 3 实现</p>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center py-20 text-[var(--color-text-secondary)]">
-              <p className="text-lg mb-2">订阅列表</p>
-              <p className="text-sm">Phase 2 实现</p>
-            </div>
+            <SubscriptionsView subscriptions={subscriptions} onEdit={openEditDrawer} />
           )}
 
-          {/* Temporary theme switcher for Phase 1 testing */}
+          {/* Temporary theme switcher */}
           <div className="fixed bottom-6 left-6 z-50">
             <button
               onClick={cycleTheme}
@@ -246,7 +826,19 @@ export default function App() {
         </div>
       )}
 
-      <FAB onClick={() => {}} />
+      <SubscriptionDrawer
+        open={drawerOpen}
+        editingSub={editingSub}
+        allCategories={allCategories}
+        onSave={handleSave}
+        onUpdate={handleUpdate}
+        onDelete={handleDelete}
+        onCancel={closeDrawer}
+        onToggleStatus={handleToggleStatus}
+        onAddCategory={handleAddCategory}
+      />
+
+      <FAB onClick={openNewDrawer} />
     </div>
   )
 }
