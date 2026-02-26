@@ -31,6 +31,7 @@
 - 架构设计：`docs/ARCHITECTURE.md`
 - 开发计划：`docs/plans/PLAN.md`
 - 项目状态：`PROJECT_CONTEXT.md`
+- 开发工作流：`docs/workflow/SIDE-PROJECT-SPEC-DRIVEN-WORKFLOW.md`（文档结构与阶段流程的依据）
 
 ## 阶段收尾规则
 
