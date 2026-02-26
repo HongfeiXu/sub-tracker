@@ -510,13 +510,16 @@ function SubscriptionDrawer({ open, editingSub, allCategories, onSave, onUpdate,
           {/* Name */}
           <div>
             <label className="block text-xs text-[var(--color-text-secondary)] mb-1.5">名称 *</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="如 Netflix、Spotify"
-              className="w-full px-4 py-3 rounded-xl bg-[var(--color-card)] text-sm text-[var(--color-text-primary)] border border-[var(--color-divider)] outline-none focus:border-[var(--color-accent)]"
-            />
+            <div className="flex gap-2 items-center">
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="如 Netflix、Spotify"
+                className="flex-1 px-4 py-3 rounded-xl bg-[var(--color-card)] text-sm text-[var(--color-text-primary)] border border-[var(--color-divider)] outline-none focus:border-[var(--color-accent)]"
+              />
+              <div className="w-10 h-10 rounded-xl shrink-0 border border-[var(--color-divider)]" style={{ backgroundColor: color }} />
+            </div>
           </div>
 
           {/* Amount + Currency */}
@@ -838,7 +841,7 @@ export default function App() {
         onAddCategory={handleAddCategory}
       />
 
-      <FAB onClick={openNewDrawer} />
+      {!drawerOpen && <FAB onClick={openNewDrawer} />}
     </div>
   )
 }
