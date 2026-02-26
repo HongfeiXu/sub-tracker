@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 
 // ============================================================
 // Types
@@ -167,6 +168,73 @@ function todayString(): string {
   return new Date().toISOString().split('T')[0]
 }
 
+function convertToMonthly(amount: number, cycle: BillingCycle, customDays?: number): number {
+  switch (cycle) {
+    case 'monthly': return amount
+    case 'quarterly': return amount / 3
+    case 'yearly': return amount / 12
+    case 'custom': return customDays ? amount / (customDays / 30) : 0
+  }
+}
+
+function convertToYearly(amount: number, cycle: BillingCycle, customDays?: number): number {
+  switch (cycle) {
+    case 'monthly': return amount * 12
+    case 'quarterly': return amount * 4
+    case 'yearly': return amount
+    case 'custom': return customDays ? amount * (365 / customDays) : 0
+  }
+}
+
+interface SpendingSummary {
+  CNY: { monthly: number; yearly: number }
+  USD: { monthly: number; yearly: number }
+}
+
+function calcSpendingSummary(subscriptions: Subscription[]): SpendingSummary {
+  const result: SpendingSummary = {
+    CNY: { monthly: 0, yearly: 0 },
+    USD: { monthly: 0, yearly: 0 },
+  }
+  for (const sub of subscriptions) {
+    if (sub.status !== 'active') continue
+    result[sub.currency].monthly += convertToMonthly(sub.amount, sub.cycle, sub.customCycleDays)
+    result[sub.currency].yearly += convertToYearly(sub.amount, sub.cycle, sub.customCycleDays)
+  }
+  return result
+}
+
+interface CategoryBreakdownItem {
+  name: string
+  value: number
+  color: string
+}
+
+function calcCategoryBreakdown(
+  subscriptions: Subscription[],
+  period: 'monthly' | 'yearly',
+  allCategories: Category[],
+): { CNY: CategoryBreakdownItem[]; USD: CategoryBreakdownItem[] } {
+  const convert = period === 'monthly' ? convertToMonthly : convertToYearly
+  const cnyMap = new Map<string, number>()
+  const usdMap = new Map<string, number>()
+
+  for (const sub of subscriptions) {
+    if (sub.status !== 'active') continue
+    const map = sub.currency === 'CNY' ? cnyMap : usdMap
+    const val = convert(sub.amount, sub.cycle, sub.customCycleDays)
+    map.set(sub.category, (map.get(sub.category) ?? 0) + val)
+  }
+
+  const toArray = (map: Map<string, number>): CategoryBreakdownItem[] =>
+    Array.from(map.entries()).map(([name, value]) => {
+      const cat = allCategories.find((c) => c.name === name)
+      return { name, value, color: cat?.color ?? '#A78BFA' }
+    })
+
+  return { CNY: toArray(cnyMap), USD: toArray(usdMap) }
+}
+
 // ============================================================
 // Theme Management
 // ============================================================
@@ -321,6 +389,203 @@ function SubscriptionCard({ sub, onClick }: { sub: Subscription; onClick: () => 
         <ChevronRightIcon />
       </div>
     </button>
+  )
+}
+
+// --- Dashboard Components ---
+
+function StatsCard({
+  title,
+  amountCNY,
+  amountUSD,
+  chartData,
+}: {
+  title: string
+  amountCNY: number
+  amountUSD: number
+  chartData: { CNY: CategoryBreakdownItem[]; USD: CategoryBreakdownItem[] }
+}) {
+  const hasCNY = amountCNY > 0
+  const hasUSD = amountUSD > 0
+  const hasData = hasCNY || hasUSD
+  const primaryCurrency = hasCNY ? 'CNY' : 'USD'
+  const primaryAmount = hasCNY ? amountCNY : amountUSD
+  const primarySymbol = primaryCurrency === 'CNY' ? '¥' : '$'
+  const pieData = chartData[primaryCurrency].length > 0 ? chartData[primaryCurrency] : chartData[primaryCurrency === 'CNY' ? 'USD' : 'CNY']
+
+  return (
+    <div className="rounded-2xl bg-[var(--color-card)] p-4">
+      <p className="text-xs text-[var(--color-text-secondary)] mb-3">{title}</p>
+      {!hasData ? (
+        <div className="flex items-center justify-center py-6 text-sm text-[var(--color-text-secondary)]">
+          暂无数据
+        </div>
+      ) : (
+        <div className="flex items-center gap-4">
+          <div className="flex-1 min-w-0">
+            {hasCNY && (
+              <p className="text-2xl font-bold text-[var(--color-text-primary)]">
+                ¥ {amountCNY.toFixed(2)}
+              </p>
+            )}
+            {hasUSD && (
+              <p className={`font-bold text-[var(--color-text-primary)] ${hasCNY ? 'text-base mt-1' : 'text-2xl'}`}>
+                $ {amountUSD.toFixed(2)}
+              </p>
+            )}
+            <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2">
+              {pieData.map((item) => (
+                <span key={item.name} className="flex items-center gap-1 text-xs text-[var(--color-text-secondary)]">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                  {item.name}
+                </span>
+              ))}
+            </div>
+          </div>
+          {pieData.length > 0 && (
+            <div className="w-24 h-24 shrink-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    dataKey="value"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={28}
+                    outerRadius={44}
+                    paddingAngle={2}
+                    strokeWidth={0}
+                  >
+                    {pieData.map((entry, index) => (
+                      <Cell key={index} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <text
+                    x="50%"
+                    y="50%"
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    className="fill-[var(--color-text-primary)]"
+                    fontSize={11}
+                    fontWeight={700}
+                  >
+                    {primarySymbol}{primaryAmount >= 1000 ? `${(primaryAmount / 1000).toFixed(1)}k` : primaryAmount.toFixed(0)}
+                  </text>
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function UpcomingList({ subscriptions }: { subscriptions: Subscription[] }) {
+  const [showAll, setShowAll] = useState(false)
+
+  const sorted = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    return subscriptions
+      .filter((s) => s.status === 'active' && s.nextBillDate)
+      .sort((a, b) => a.nextBillDate.localeCompare(b.nextBillDate))
+      .map((sub) => {
+        const next = new Date(sub.nextBillDate)
+        next.setHours(0, 0, 0, 0)
+        const daysDiff = Math.ceil((next.getTime() - today.getTime()) / 86400000)
+        return { sub, daysDiff }
+      })
+  }, [subscriptions])
+
+  const within30 = sorted.filter((item) => item.daysDiff <= 30)
+  const beyond30 = sorted.filter((item) => item.daysDiff > 30)
+  const displayed = showAll ? sorted : within30
+
+  const formatDaysDiff = (days: number): string => {
+    if (days === 0) return '今天'
+    if (days < 0) return `已过期 ${Math.abs(days)} 天`
+    return `${days} 天后`
+  }
+
+  const daysDiffColor = (days: number): string => {
+    if (days <= 0) return 'text-red-500'
+    if (days <= 3) return 'text-orange-500'
+    if (days <= 7) return 'text-[var(--color-accent)]'
+    return 'text-[var(--color-text-secondary)]'
+  }
+
+  return (
+    <div className="rounded-2xl bg-[var(--color-card)] p-4">
+      <p className="text-xs text-[var(--color-text-secondary)] mb-3">即将扣款</p>
+      {sorted.length === 0 ? (
+        <div className="flex items-center justify-center py-6 text-sm text-[var(--color-text-secondary)]">
+          暂无生效中的订阅
+        </div>
+      ) : (
+        <>
+          <div className="flex flex-col gap-2">
+            {displayed.map(({ sub, daysDiff }) => {
+              const currencySymbol = sub.currency === 'CNY' ? '¥' : '$'
+              return (
+                <div key={sub.id} className="flex items-center gap-3 py-2">
+                  <div className="w-1 h-8 rounded-full shrink-0" style={{ backgroundColor: sub.color }} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">{sub.name}</p>
+                    <p className="text-xs text-[var(--color-text-secondary)]">
+                      {currencySymbol} {sub.amount.toFixed(2)} · {formatDate(sub.nextBillDate)}
+                    </p>
+                  </div>
+                  <span className={`text-xs font-medium shrink-0 ${daysDiffColor(daysDiff)}`}>
+                    {formatDaysDiff(daysDiff)}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+          {beyond30.length > 0 && (
+            <button
+              onClick={() => setShowAll((p) => !p)}
+              className="w-full mt-2 py-2 text-xs text-[var(--color-accent)] font-medium"
+            >
+              {showAll ? '收起' : `查看全部（还有 ${beyond30.length} 项）`}
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+function DashboardView({
+  subscriptions,
+  allCategories,
+}: {
+  subscriptions: Subscription[]
+  allCategories: Category[]
+}) {
+  const summary = useMemo(() => calcSpendingSummary(subscriptions), [subscriptions])
+  const monthlyBreakdown = useMemo(() => calcCategoryBreakdown(subscriptions, 'monthly', allCategories), [subscriptions, allCategories])
+  const yearlyBreakdown = useMemo(() => calcCategoryBreakdown(subscriptions, 'yearly', allCategories), [subscriptions, allCategories])
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <StatsCard
+          title="月度支出"
+          amountCNY={summary.CNY.monthly}
+          amountUSD={summary.USD.monthly}
+          chartData={monthlyBreakdown}
+        />
+        <StatsCard
+          title="年度支出"
+          amountCNY={summary.CNY.yearly}
+          amountUSD={summary.USD.yearly}
+          chartData={yearlyBreakdown}
+        />
+      </div>
+      <UpcomingList subscriptions={subscriptions} />
+    </div>
   )
 }
 
@@ -797,10 +1062,7 @@ export default function App() {
 
         <main className="px-5 pb-24">
           {activeTab === 'dashboard' ? (
-            <div className="flex flex-col items-center justify-center py-20 text-[var(--color-text-secondary)]">
-              <p className="text-lg mb-2">总览</p>
-              <p className="text-sm">Phase 3 实现</p>
-            </div>
+            <DashboardView subscriptions={subscriptions} allCategories={allCategories} />
           ) : (
             <SubscriptionsView subscriptions={subscriptions} onEdit={openEditDrawer} />
           )}
