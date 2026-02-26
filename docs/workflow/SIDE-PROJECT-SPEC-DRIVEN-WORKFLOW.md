@@ -11,7 +11,7 @@
 阶段 1: 架构设计        → ARCHITECTURE.md
 阶段 2: 开发计划        → PLAN.md
 阶段 3: 迭代开发循环     → PLAN-PHASE-{N}.md + ISSUES-PHASE-{N}.md + CHANGELOG.md
-贯穿全程:               → PROJECT_CONTEXT.md, CLAUDE.md, CODESTYLE.md, RETRO.md
+贯穿全程:               → PROJECT_CONTEXT.md, CLAUDE.md, RETRO.md
 ```
 
 ---
@@ -20,9 +20,7 @@
 
 ```
 project-root/
-├── .claude/
-│   ├── CLAUDE.md                    # 项目规则与约定（偏流程）
-│   └── CODESTYLE.md                 # 代码规范（偏技术）
+├── CLAUDE.md                        # 项目规则 + 代码规范 + 收尾流程（Claude Code 自动读取）
 │
 ├── docs/
 │   ├── PRD.md                       # 需求文档
@@ -205,7 +203,7 @@ ARCHITECTURE.md 是活文档。开发过程中如果发生架构层面的变更�
 - 这个阶段实际耗时 vs 预期耗时？差在哪里？
 - 哪些 prompt / 指令让 Claude Code 效果好？
 - 哪些地方 Claude Code 容易出错，需要更明确的约束？
-- 有没有需要补充到 CODESTYLE.md 或 CLAUDE.md 里的新规则？
+- 有没有需要补充到 CLAUDE.md 里的新规则？
 - 下个阶段的计划需要调整吗？
 
 ### 3d. 完整的阶段循环
@@ -230,7 +228,7 @@ ARCHITECTURE.md 是活文档。开发过程中如果发生架构层面的变更�
 
 ## 阶段收尾规则
 
-Claude Code 没有自动触发机制。通过在 `.claude/CLAUDE.md` 中写入以下规则，你只需说一句 **"Phase N 验收完成"**，Claude Code 就会执行收尾流程：
+Claude Code 没有自动触发机制。通过在 `CLAUDE.md` 中写入以下规则，你只需说一句 **"Phase N 验收完成"**，Claude Code 就会执行收尾流程：
 
 ```markdown
 ## 阶段收尾规则
@@ -248,6 +246,50 @@ Claude Code 没有自动触发机制。通过在 `.claude/CLAUDE.md` 中写入�
 
 ## 贯穿全程的文档
 
+### `CLAUDE.md`
+
+放在项目根目录，Claude Code 启动时自动读取。把项目规则、代码规范、收尾流程写在同一个文件里，用 heading 分区。建议结构如下：
+
+```markdown
+# 项目简介
+
+一句话描述项目是什么。
+
+## 常用命令
+
+- `npm run dev` — 启动开发服务器
+- `npm run build` — 构建
+- `npm run test` — 运行测试
+- `npm run lint` — 代码检查
+
+## 项目规则
+
+- commit message 格式：`type(scope): description`
+- 禁止直接修改 config/ 目录下的文件
+- 所有 API 接口需要写对应的测试
+
+## 代码规范
+
+- 命名：变量和函数用 camelCase，类用 PascalCase，文件用 kebab-case
+- 文件组织：每个文件只导出一个主要模块
+- 错误处理：统一使用自定义 AppError 类，禁止裸 throw
+- 注释：公共 API 必须写 JSDoc / docstring，内部实现只在复杂逻辑处注释
+- import 顺序：第三方库 → 项目内部模块 → 相对路径模块，各组之间空一行
+- 测试：测试文件与源文件同名，后缀 .test.ts / .spec.ts
+
+## 阶段收尾规则
+
+当用户说"Phase N 验收完成"时，执行以下操作：
+1. 读取 docs/plans/ISSUES-PHASE-{N}.md
+2. 将所有 ⏳ 推迟的条目追加到目标阶段的 PLAN-PHASE-{X}.md 中
+   - 如果目标阶段计划还没创建，追加到 PLAN.md 对应阶段的概述里
+3. 检查本阶段是否有架构层面的变更，如有则同步更新 docs/ARCHITECTURE.md
+4. 更新 CHANGELOG.md，追加本阶段的变更记录
+5. 更新 PROJECT_CONTEXT.md 的当前状态
+```
+
+此文件是活文档。开发过程中发现需要补充的规范（比如阶段回顾中总结出 Claude Code 反复犯的风格错误），应及时追加。
+
 ### `PROJECT_CONTEXT.md`
 
 放在项目根目录，作为**项目状态的 single source of truth**，每个阶段结束后更新。
@@ -261,36 +303,6 @@ Claude Code 没有自动触发机制。通过在 `.claude/CLAUDE.md` 中写入�
 - **下一步** — 接下来要做什么
 
 核心价值：**任何一个新的 Claude Code session，读完这个文件就能接上进度。**
-
-### `.claude/CLAUDE.md`
-
-Claude Code 的项目级配置文件，内容偏"规则"而非"状态"：
-
-- 项目简介（一句话描述项目是什么）
-- 常用命令（构建、测试、运行、lint）
-- commit message 格式
-- 禁止做的事（比如"不要修改 config 目录下的文件"）
-- 项目特殊注意事项
-- **阶段收尾规则**（见上方）
-- 代码规范引用：`代码规范详见 .claude/CODESTYLE.md`
-
-Claude Code 启动时会自动读取 `.claude/` 下的所有 md 文件。
-
-### `.claude/CODESTYLE.md`
-
-独立于 CLAUDE.md 的代码规范文档，内容偏技术细节。从 CLAUDE.md 中拆出是因为代码规范内容通常较多，混在一起会臃肿。
-
-内容：
-
-- **命名规范** — 变量、函数、类、文件、目录的命名风格（camelCase / snake_case / PascalCase）
-- **文件组织** — 单文件职责、import 顺序、模块导出方式
-- **错误处理** — 统一的错误处理模式、错误码规范
-- **日志规范** — 日志级别使用、日志格式
-- **注释风格** — 何时需要注释、注释格式（JSDoc / docstring 等）
-- **测试规范** — 测试文件命名、测试组织方式、测试覆盖要求
-- **格式化** — 缩进、行宽、尾逗号等（或直接引用 .prettierrc / .editorconfig）
-
-此文件是活文档。开发过程中发现需要补充的规范（比如阶段回顾中总结出 Claude Code 反复犯的风格错误），应及时追加。
 
 ### `docs/SETUP.md`
 
@@ -323,6 +335,7 @@ Claude Code 启动时会自动读取 `.claude/` 下的所有 md 文件。
 
 | 文档 | 位置 | 产出时机 | 谁写 | 作用 |
 |---|---|---|---|---|
+| `CLAUDE.md` | 项目根目录 | 项目初始化时，持续补充 | 你 + Claude Code | 项目规则、代码规范、收尾流程 |
 | `PRD.md` | `docs/` | 阶段 0 | claude.ai | 需求的完整描述 |
 | `ARCHITECTURE.md` | `docs/` | 阶段 1，后续按需更新 | claude.ai，后续 Claude Code 同步 | 技术方案蓝图 |
 | `SETUP.md` | `docs/` | 阶段 2（首次开发前） | Claude Code + 你 | 环境搭建说明 |
@@ -331,8 +344,6 @@ Claude Code 启动时会自动读取 `.claude/` 下的所有 md 文件。
 | `PLAN-PHASE-{N}.md` | `docs/plans/` | 每阶段开始前 | Claude Code | 单阶段详细任务与验收标准 |
 | `ISSUES-PHASE-{N}.md` | `docs/plans/` | 每阶段验收时 | Claude Code + 你 | 验收期间的 bug 和小 feature |
 | `PROJECT_CONTEXT.md` | 项目根目录 | 贯穿全程，每阶段更新 | Claude Code + 你 | 项目状态快照，新 session 入口 |
-| `CLAUDE.md` | `.claude/` | 项目初始化时 | 你 + Claude Code | 项目规则、流程约定 |
-| `CODESTYLE.md` | `.claude/` | 项目初始化时，持续补充 | 你 + Claude Code | 代码规范 |
 | `CHANGELOG.md` | 项目根目录 | 每阶段结束后 | Claude Code | 变更记录 |
 
 ---
@@ -343,6 +354,6 @@ Claude Code 启动时会自动读取 `.claude/` 下的所有 md 文件。
 2. **先想清楚再动手** — 阶段 0 和 1 不写任何代码，磨刀不误砍柴工
 3. **小步交付** — 每个阶段结束都有可验证的产出
 4. **验收标准前置** — 写计划时就定义好"做完"的标准，不要事后才想
-5. **持续更新上下文** — PROJECT_CONTEXT.md、ARCHITECTURE.md、CODESTYLE.md 都是活文档
+5. **持续更新上下文** — PROJECT_CONTEXT.md、ARCHITECTURE.md、CLAUDE.md 都是活文档
 6. **用约定代替自动化** — 把流程规则写进 CLAUDE.md，用一句话触发而非依赖不存在的自动机制
 7. **回顾驱动改进** — 每个阶段结束后回顾，把教训沉淀到规则和规范中
