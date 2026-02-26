@@ -2,9 +2,9 @@
 
 ## 当前状态
 
-- **阶段**: Phase 2 开发已完成，等待用户手动验收
-- **进度**: ~40%（Phase 2 代码完成，验收未开始）
-- **待办**: 用户按 `docs/plans/PLAN-PHASE-2.md` 测试计划逐项验收，通过后进入 Phase 2 收尾
+- **阶段**: Phase 2 验收完成，准备进入 Phase 3
+- **进度**: ~50%
+- **待办**: Phase 2 回顾 → 编写 PLAN-PHASE-3.md → 开发 Phase 3
 
 ## 已完成阶段
 
@@ -14,7 +14,7 @@
 - 核心类型定义、localStorage 工具、主题管理
 - 应用外壳（Header / TabBar / FAB）+ 双色彩体系
 
-### Phase 2 — 订阅管理 CRUD（2026-02-26，待验收）
+### Phase 2 — 订阅管理 CRUD（2026-02-27 验收通过）
 
 - 品牌色映射表 + 模糊匹配（21 个品牌关键词）
 - 下次扣款日计算（monthly/quarterly/yearly/custom）
@@ -23,6 +23,7 @@
 - 订阅列表页（卡片渲染、生效中/已取消筛选、灰度化）
 - CRUD 操作（新增/编辑/删除确认/取消/重新激活）
 - localStorage 持久化
+- Bug 修复：品牌色预览色块、FAB 与抽屉重叠
 
 ## 已知问题 / 技术债
 
@@ -37,6 +38,6 @@
 
 ## 下一步
 
-1. 用户验收 Phase 2（测试计划见 `docs/plans/PLAN-PHASE-2.md`）
-2. 验收通过后执行 Phase 2 收尾（ISSUES、CHANGELOG、RETRO — 回顾内容需先问用户）
-3. 进入 Phase 3：总览仪表盘（统计卡片、环形图、即将扣款列表）
+1. Phase 2 回顾（追加到 docs/RETRO.md）
+2. 编写 PLAN-PHASE-3.md（总览仪表盘：统计卡片、环形图、即将扣款列表）
+3. 开发 Phase 3
