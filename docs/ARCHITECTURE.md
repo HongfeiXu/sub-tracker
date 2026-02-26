@@ -8,12 +8,13 @@
 
 | 项目 | 选择 | 理由 |
 |------|------|------|
-| 框架 | React（单 .jsx 文件） | 组件化开发，状态管理方便 |
-| 样式 | Tailwind CSS | 快速开发，暗色模式内置支持 |
+| 语言 | TypeScript | 类型安全，枚举字段（currency / cycle / status）防拼写错误 |
+| 框架 | React（单 .tsx 文件） | 组件化开发，状态管理方便 |
+| 样式 | Tailwind CSS v4 | 快速开发，CSS-first 配置，暗色模式内置支持 |
 | 图表 | Recharts | 轻量，React 生态，支持环形图 |
 | ID 生成 | crypto.randomUUID() | 浏览器原生，无需额外依赖 |
 | 数据存储 | localStorage | 纯前端，零依赖 |
-| 构建工具 | Vite | 快速 HMR，开箱支持 React + Tailwind |
+| 构建工具 | Vite | 快速 HMR，开箱支持 React + TS + Tailwind |
 | 日期处理 | 原生 Date API | 计算简单，不需要 dayjs/moment |
 
 ---
@@ -22,9 +23,7 @@
 
 ```
 sub-tracker/
-├── .claude/
-│   ├── CLAUDE.md
-│   └── CODESTYLE.md
+├── CLAUDE.md
 ├── docs/
 │   ├── PRD.md
 │   ├── ARCHITECTURE.md
@@ -36,16 +35,17 @@ sub-tracker/
 ├── PROJECT_CONTEXT.md
 ├── CHANGELOG.md
 ├── package.json
-├── vite.config.js
-├── tailwind.config.js
-├── postcss.config.js
+├── tsconfig.json
+├── vite.config.ts
 ├── index.html              # 入口 HTML
 └── src/
-    ├── index.css            # Tailwind 指令 + 全局样式
-    └── App.jsx              # 单文件 React 应用
+    ├── index.css            # Tailwind CSS 入口（@import "tailwindcss"）
+    └── App.tsx              # 单文件 React 应用
 ```
 
-> 注：v1 采用单 .jsx 文件方案，所有组件、逻辑、样式集中在 `src/App.jsx` 中。后续如需拆分，再调整目录结构。
+> 注：v1 采用单 .tsx 文件方案，所有组件、逻辑、样式集中在 `src/App.tsx` 中。后续如需拆分，再调整目录结构。
+>
+> Tailwind CSS v4 使用 CSS-first 配置，通过 `@import "tailwindcss"` 引入，无需 `tailwind.config.js` 和 `postcss.config.js`。通过 Vite 插件 `@tailwindcss/vite` 集成。
 
 ---
 
@@ -217,7 +217,8 @@ App
 
 - 存储用户选择（`auto` / `light` / `dark`）到 localStorage
 - `auto` 模式通过 `window.matchMedia('(prefers-color-scheme: dark)')` 监听系统主题
-- 在根元素上切换 `dark` class，利用 Tailwind 的 `dark:` 前缀控制样式
+- 在根元素上切换 `dark` class，利用 Tailwind 的 `dark:` variant 控制样式
+- Tailwind v4 中通过 `@custom-variant dark (&:where(.dark, .dark *))` 定义自定义暗色 variant
 
 ### 5.7 导入导出格式
 
@@ -240,7 +241,9 @@ App
 
 | 决策 | 理由 |
 |------|------|
-| 单 .jsx 文件 | v1 功能简单，单文件降低复杂度，避免过早拆分 |
+| TypeScript 而非 JavaScript | 数据模型有明确枚举，TS 类型安全收益大，Vite 零配置支持 |
+| 单 .tsx 文件 | v1 功能简单，单文件降低复杂度，避免过早拆分 |
+| Tailwind v4 而非 v3 | CSS-first 配置，免去 tailwind.config.js 和 postcss.config.js |
 | 不引入路由库 | 只有 2 个 Tab 视图，用状态切换即可 |
 | 不引入状态管理库 | useState + useReducer 足够，不需要 Redux / Zustand |
 | 不引入日期库 | 日期计算逻辑简单，原生 API 可覆盖 |

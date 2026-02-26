@@ -1,6 +1,6 @@
 # SubTracker
 
-个人订阅费用记录工具，纯前端 Web App，React + Tailwind CSS + Vite。
+个人订阅费用记录工具，纯前端 Web App，TypeScript + React + Tailwind CSS v4 + Vite。
 
 ## 常用命令
 
@@ -11,7 +11,7 @@
 ## 项目规则
 
 - commit message 格式：`type(scope): description`，type 包括 feat / fix / docs / refactor / style / chore
-- v1 采用单文件方案，所有组件和逻辑集中在 `src/App.jsx`，不要过早拆分文件
+- v1 采用单文件方案，所有组件和逻辑集中在 `src/App.tsx`，不要过早拆分文件
 - 数据仅存 localStorage，不引入任何后端服务
 - 不引入额外的状态管理库、路由库、日期库
 - 新增第三方依赖前需说明理由
@@ -22,6 +22,7 @@
 - 样式：优先使用 Tailwind class，避免手写 CSS（除 Tailwind 指令外）
 - 组件：函数组件 + Hooks，不使用 class 组件
 - 状态：useState / useReducer 管理，状态提升到 App 组件
+- 类型：不使用 `any` 或 `unknown`，所有数据结构必须有明确类型定义
 - 注释：只在复杂业务逻辑处注释，组件和函数命名应自解释
 
 ## 关键文档
