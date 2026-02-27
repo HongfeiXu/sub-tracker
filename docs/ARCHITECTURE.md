@@ -12,7 +12,7 @@
 | 框架 | React（单 .tsx 文件） | 组件化开发，状态管理方便 |
 | 样式 | Tailwind CSS v4 | 快速开发，CSS-first 配置，暗色模式内置支持 |
 | 图表 | Recharts | 轻量，React 生态，支持环形图 |
-| ID 生成 | crypto.randomUUID() | 浏览器原生，无需额外依赖 |
+| ID 生成 | Date.now + Math.random | 浏览器兼容性好，不依赖 secure context |
 | 数据存储 | localStorage | 纯前端，零依赖 |
 | 构建工具 | Vite | 快速 HMR，开箱支持 React + TS + Tailwind |
 | 日期处理 | 原生 Date API | 计算简单，不需要 dayjs/moment |
@@ -55,7 +55,7 @@ sub-tracker/
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `id` | string (UUID) | 自动 | 唯一标识，自动生成 |
+| `id` | string | 自动 | 唯一标识，自动生成 |
 | `name` | string | 是 | 订阅服务名称 |
 | `amount` | number | 是 | 金额，精确到分 |
 | `currency` | enum | 是 | `CNY` 或 `USD` |
@@ -68,6 +68,7 @@ sub-tracker/
 | `status` | enum | 自动 | `active` / `cancelled` |
 | `cancelledDate` | string (ISO) | 条件 | 取消日期，标记取消时自动记录 |
 | `note` | string | 否 | 备注信息 |
+| `billingHistory` | BillingRecord[] | 自动 | 扣款记录数组，每条 `{ date: string, amount: number }` |
 | `createdAt` | string (ISO) | 自动 | 创建时间 |
 | `updatedAt` | string (ISO) | 自动 | 最后修改时间 |
 
@@ -171,9 +172,10 @@ App
 
 折算公式见 PRD 3.4 业务规则，此处补充实现要点：
 
-- 折算函数接收 `(amount, cycle, customCycleDays?)` 返回 `{ monthly, yearly }`
-- 按 `currency` 分组后分别求和，返回 `{ CNY: { monthly, yearly }, USD: { monthly, yearly } }`
-- 分类占比基于月度金额计算，按 `currency` 分开生成独立的饼图数据数组
+- **月度支出**：数学换算（`convertToMonthly`），代表「每月要花多少」，仅统计 active 订阅
+- **年度支出**：基于 `billingHistory` 当年实际扣款记录之和（含 cancelled 订阅的历史记录）
+- 按 `currency` 分组后分别求和
+- 分类占比：月度基于数学换算，年度基于 billingHistory，按 `currency` 分开生成独立的饼图数据数组
 - 边界处理：`customCycleDays` 为 0 或负数时视为无效，不参与统计
 
 ### 5.5 品牌色自动匹配

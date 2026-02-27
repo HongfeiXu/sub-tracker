@@ -1,5 +1,47 @@
 # Changelog
 
+## Phase 3 — 2026-02-27
+
+### 完成内容
+
+- 月度/年度支出统计卡片（CNY/USD 分开显示）
+- 分类占比环形图（Recharts 甜甜圈图，中心显示总金额）
+- 即将扣款列表（30 天内优先显示，可展开全部）
+- 移动端上下堆叠 / 桌面端并排响应式布局
+- 引入 Recharts 图表库
+
+### 功能补丁
+
+- **FEATURE-001**: billingHistory 实际扣款记录 — 年度支出改为基于真实扣款记录统计
+  - 新增 BillingRecord 数据结构，Subscription 增加 billingHistory 字段
+  - 创建订阅时从 startDate 回填历史扣款记录
+  - App 加载时自动推进缺失的扣款记录
+  - 取消订阅保留历史，重新激活追加当日记录
+- **FEATURE-002**: StatsCard 环形图增强 — 双币种小环形图 + 原地展开按订阅 item 着色
+
+### Bug 修复
+
+- 反复取消/重新激活同日不重复追加扣款记录
+- 分类图例去重（双币种同分类时不重复显示）
+- CNY/USD 金额字号统一为 text-2xl
+- crypto.randomUUID 替换为兼容性更好的 ID 生成方式
+
+### 基础设施
+
+- 引入 vitest 单元测试（17 个用例覆盖 billing 工具函数）
+- 引入 Playwright 浏览器级自动化测试
+- 建立三层测试闭环（tsc → vitest → Playwright）
+
+### 破坏性变更
+
+- Subscription 新增 billingHistory 字段，不兼容旧 localStorage 数据（需清除重建）
+
+### 遗留问题
+
+无
+
+---
+
 ## Phase 2 — 2026-02-27
 
 ### 完成内容
