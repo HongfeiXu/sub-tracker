@@ -17,3 +17,7 @@
 
 - 很多测试可以由 Claude 自动完成（tsc 类型检查、vitest 纯函数、Playwright 浏览器级验证），前提是 plan 中明确分配好测试任务——哪些是自动化可覆盖的，哪些需要人工介入（如视觉审查、动画流畅度、主观体验）
 - 建立了三层测试闭环（tsc → vitest → Playwright），后续阶段 plan 中应按需标注每项改动对应的测试层级
+- `new Date('YYYY-MM-DD')` 按 UTC 解析，UTC+8 下会偏移到前一天——凡 `YYYY-MM-DD` 字符串必须用 `parseLocalDate` 走本地时区
+- Recharts `ResponsiveContainer` 百分比尺寸首次渲染会算出 -1，小图直接用固定 `width/height`
+- 数据结构破坏性变更（billingHistory）目前靠清 localStorage 解决，后续有真实用户数据时需要 migration 逻辑
+- 单文件已超 1200 行，Phase 4 后应评估拆分
