@@ -366,6 +366,45 @@ function calcYearlyCategoryBreakdown(
   return { CNY: toArray(cnyMap), USD: toArray(usdMap) }
 }
 
+interface ItemBreakdownItem {
+  name: string
+  value: number
+  color: string
+  category: string
+}
+
+function calcMonthlyItemBreakdown(subscriptions: Subscription[]): { CNY: ItemBreakdownItem[]; USD: ItemBreakdownItem[] } {
+  const cny: ItemBreakdownItem[] = []
+  const usd: ItemBreakdownItem[] = []
+  for (const sub of subscriptions) {
+    if (sub.status !== 'active') continue
+    const value = convertToMonthly(sub.amount, sub.cycle, sub.customCycleDays)
+    if (value <= 0) continue
+    const item = { name: sub.name, value, color: sub.color, category: sub.category }
+    if (sub.currency === 'CNY') cny.push(item); else usd.push(item)
+  }
+  const sort = (arr: ItemBreakdownItem[]) => arr.sort((a, b) => a.category.localeCompare(b.category) || b.value - a.value)
+  return { CNY: sort(cny), USD: sort(usd) }
+}
+
+function calcYearlyItemBreakdown(subscriptions: Subscription[]): { CNY: ItemBreakdownItem[]; USD: ItemBreakdownItem[] } {
+  const currentYear = new Date().getFullYear()
+  const yearPrefix = String(currentYear)
+  const cny: ItemBreakdownItem[] = []
+  const usd: ItemBreakdownItem[] = []
+  for (const sub of subscriptions) {
+    let yearTotal = 0
+    for (const record of sub.billingHistory) {
+      if (record.date.startsWith(yearPrefix)) yearTotal += record.amount
+    }
+    if (yearTotal <= 0) continue
+    const item = { name: sub.name, value: yearTotal, color: sub.color, category: sub.category }
+    if (sub.currency === 'CNY') cny.push(item); else usd.push(item)
+  }
+  const sort = (arr: ItemBreakdownItem[]) => arr.sort((a, b) => a.category.localeCompare(b.category) || b.value - a.value)
+  return { CNY: sort(cny), USD: sort(usd) }
+}
+
 // ============================================================
 // Theme Management
 // ============================================================
@@ -525,88 +564,150 @@ function SubscriptionCard({ sub, onClick }: { sub: Subscription; onClick: () => 
 
 // --- Dashboard Components ---
 
+function MiniPie({ data, amount, symbol }: { data: CategoryBreakdownItem[]; amount: number; symbol: string }) {
+  if (data.length === 0) return null
+  return (
+    <ResponsiveContainer width={96} height={96}>
+      <PieChart>
+        <Pie data={data} dataKey="value" cx="50%" cy="50%" innerRadius={28} outerRadius={44} paddingAngle={2} strokeWidth={0}>
+          {data.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+        </Pie>
+        <text x="50%" y="50%" textAnchor="middle" dominantBaseline="central" className="fill-[var(--color-text-primary)]" fontSize={11} fontWeight={700}>
+          {symbol}{amount >= 1000 ? `${(amount / 1000).toFixed(1)}k` : amount.toFixed(0)}
+        </text>
+      </PieChart>
+    </ResponsiveContainer>
+  )
+}
+
+function ExpandedPieSection({ symbol, label, amount, items }: { symbol: string; label: string; amount: number; items: ItemBreakdownItem[] }) {
+  return (
+    <div>
+      {label && (
+        <p className="text-xs text-[var(--color-text-secondary)] text-center border-b border-[var(--color-divider)] pb-2 mb-3">
+          {symbol} {label}
+        </p>
+      )}
+      <div className="flex items-center gap-4">
+        <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+          {items.map((item) => (
+            <div key={item.name} className="flex items-center justify-between text-xs">
+              <span className="flex items-center gap-1.5 text-[var(--color-text-primary)] truncate">
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                {item.name}
+              </span>
+              <span className="text-[var(--color-text-secondary)] shrink-0 ml-2">{symbol} {item.value.toFixed(2)}</span>
+            </div>
+          ))}
+        </div>
+        <div className="shrink-0">
+          <ResponsiveContainer width={120} height={120}>
+            <PieChart>
+              <Pie data={items} dataKey="value" cx="50%" cy="50%" innerRadius={35} outerRadius={55} paddingAngle={2} strokeWidth={0}>
+                {items.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+              </Pie>
+              <text x="50%" y="50%" textAnchor="middle" dominantBaseline="central" className="fill-[var(--color-text-primary)]" fontSize={12} fontWeight={700}>
+                {symbol}{amount >= 1000 ? `${(amount / 1000).toFixed(1)}k` : amount.toFixed(0)}
+              </text>
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function StatsCard({
   title,
   amountCNY,
   amountUSD,
   chartData,
+  itemData,
 }: {
   title: string
   amountCNY: number
   amountUSD: number
   chartData: { CNY: CategoryBreakdownItem[]; USD: CategoryBreakdownItem[] }
+  itemData: { CNY: ItemBreakdownItem[]; USD: ItemBreakdownItem[] }
 }) {
+  const [expanded, setExpanded] = useState(false)
   const hasCNY = amountCNY > 0
   const hasUSD = amountUSD > 0
   const hasData = hasCNY || hasUSD
-  const primaryCurrency = hasCNY ? 'CNY' : 'USD'
-  const primaryAmount = hasCNY ? amountCNY : amountUSD
-  const primarySymbol = primaryCurrency === 'CNY' ? '¥' : '$'
-  const pieData = chartData[primaryCurrency].length > 0 ? chartData[primaryCurrency] : chartData[primaryCurrency === 'CNY' ? 'USD' : 'CNY']
+  const hasBoth = hasCNY && hasUSD
 
   return (
-    <div className="rounded-2xl bg-[var(--color-card)] p-4">
+    <div className="rounded-2xl bg-[var(--color-card)] p-4 transition-all duration-300">
       <p className="text-xs text-[var(--color-text-secondary)] mb-3">{title}</p>
       {!hasData ? (
         <div className="flex items-center justify-center py-6 text-sm text-[var(--color-text-secondary)]">
           暂无数据
         </div>
       ) : (
-        <div className="flex items-center gap-4">
-          <div className="flex-1 min-w-0">
-            {hasCNY && (
-              <p className="text-2xl font-bold text-[var(--color-text-primary)]">
-                ¥ {amountCNY.toFixed(2)}
-              </p>
-            )}
-            {hasUSD && (
-              <p className={`font-bold text-[var(--color-text-primary)] ${hasCNY ? 'text-base mt-1' : 'text-2xl'}`}>
-                $ {amountUSD.toFixed(2)}
-              </p>
-            )}
-            <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2">
-              {pieData.map((item) => (
-                <span key={item.name} className="flex items-center gap-1 text-xs text-[var(--color-text-secondary)]">
-                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                  {item.name}
-                </span>
-              ))}
-            </div>
-          </div>
-          {pieData.length > 0 && (
-            <div className="shrink-0">
-              <ResponsiveContainer width={96} height={96}>
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    dataKey="value"
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={28}
-                    outerRadius={44}
-                    paddingAngle={2}
-                    strokeWidth={0}
-                  >
-                    {pieData.map((entry, index) => (
-                      <Cell key={index} fill={entry.color} />
+        <>
+          {/* Collapsed view */}
+          <div className="flex items-center gap-4">
+            <div className="flex-1 min-w-0">
+              {hasCNY && (
+                <p className="text-2xl font-bold text-[var(--color-text-primary)]">
+                  ¥ {amountCNY.toFixed(2)}
+                </p>
+              )}
+              {hasUSD && (
+                <p className={`text-2xl font-bold text-[var(--color-text-primary)] ${hasCNY ? 'mt-1' : ''}`}>
+                  $ {amountUSD.toFixed(2)}
+                </p>
+              )}
+              {!expanded && (() => {
+                const seen = new Set<string>()
+                const unique = [...chartData.CNY, ...chartData.USD].filter((item) => {
+                  if (seen.has(item.name)) return false
+                  seen.add(item.name)
+                  return true
+                })
+                return (
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2">
+                    {unique.map((item) => (
+                      <span key={item.name} className="flex items-center gap-1 text-xs text-[var(--color-text-secondary)]">
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                        {item.name}
+                      </span>
                     ))}
-                  </Pie>
-                  <text
-                    x="50%"
-                    y="50%"
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    className="fill-[var(--color-text-primary)]"
-                    fontSize={11}
-                    fontWeight={700}
-                  >
-                    {primarySymbol}{primaryAmount >= 1000 ? `${(primaryAmount / 1000).toFixed(1)}k` : primaryAmount.toFixed(0)}
-                  </text>
-                </PieChart>
-              </ResponsiveContainer>
+                  </div>
+                )
+              })()}
+            </div>
+            {!expanded && (
+              <div className="flex gap-2 shrink-0 cursor-pointer" onClick={() => setExpanded(true)} data-testid="pie-toggle">
+                {hasCNY && chartData.CNY.length > 0 && (
+                  <div className="shrink-0"><MiniPie data={chartData.CNY} amount={amountCNY} symbol="¥" /></div>
+                )}
+                {hasUSD && chartData.USD.length > 0 && (
+                  <div className="shrink-0"><MiniPie data={chartData.USD} amount={amountUSD} symbol="$" /></div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Expanded view */}
+          {expanded && (
+            <div className="mt-4 flex flex-col gap-4" data-testid="expanded-view">
+              {hasCNY && itemData.CNY.length > 0 && (
+                <ExpandedPieSection symbol="¥" label={hasBoth ? '人民币' : ''} amount={amountCNY} items={itemData.CNY} />
+              )}
+              {hasUSD && itemData.USD.length > 0 && (
+                <ExpandedPieSection symbol="$" label={hasBoth ? '美元' : ''} amount={amountUSD} items={itemData.USD} />
+              )}
+              <button
+                onClick={() => setExpanded(false)}
+                className="w-full py-2 text-xs text-[var(--color-accent)] font-medium"
+                data-testid="collapse-btn"
+              >
+                收起 ▲
+              </button>
             </div>
           )}
-        </div>
+        </>
       )}
     </div>
   )
@@ -697,8 +798,10 @@ function DashboardView({
 }) {
   const summary = useMemo(() => calcSpendingSummary(subscriptions), [subscriptions])
   const monthlyBreakdown = useMemo(() => calcCategoryBreakdown(subscriptions, 'monthly', allCategories), [subscriptions, allCategories])
+  const monthlyItems = useMemo(() => calcMonthlyItemBreakdown(subscriptions), [subscriptions])
   const yearlyActual = useMemo(() => calcYearlyActualSpending(subscriptions), [subscriptions])
   const yearlyBreakdown = useMemo(() => calcYearlyCategoryBreakdown(subscriptions, allCategories), [subscriptions, allCategories])
+  const yearlyItems = useMemo(() => calcYearlyItemBreakdown(subscriptions), [subscriptions])
 
   return (
     <div className="flex flex-col gap-4">
@@ -708,12 +811,14 @@ function DashboardView({
           amountCNY={summary.CNY.monthly}
           amountUSD={summary.USD.monthly}
           chartData={monthlyBreakdown}
+          itemData={monthlyItems}
         />
         <StatsCard
           title="年度支出"
           amountCNY={yearlyActual.CNY}
           amountUSD={yearlyActual.USD}
           chartData={yearlyBreakdown}
+          itemData={yearlyItems}
         />
       </div>
       <UpcomingList subscriptions={subscriptions} />
@@ -1168,7 +1273,7 @@ export default function App() {
     const billingHistory = generateBillingHistory(data.startDate, data.cycle, data.customCycleDays, data.amount, today)
     const newSub: Subscription = {
       ...data,
-      id: crypto.randomUUID(),
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2),
       nextBillDate,
       billingHistory,
       status: 'active',
