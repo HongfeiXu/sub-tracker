@@ -1,5 +1,5 @@
 import type { BillingCycle, BillingRecord, Category, CategoryBreakdownItem, ExportData, ItemBreakdownItem, Subscription, SpendingSummary, ThemeMode } from './types'
-import { BRAND_COLORS, COLOR_PALETTE, DEFAULT_CATEGORIES } from './constants'
+import { BRAND_COLORS, COLOR_PALETTE, CYCLE_MONTHS, DEFAULT_CATEGORIES } from './constants'
 
 // Storage
 
@@ -43,18 +43,17 @@ export function calculateNextBillDate(startDate: string, cycle: BillingCycle, cu
     const periods = Math.ceil(elapsed / cyclMs)
     const next = new Date(startMs + periods * cyclMs)
     if (next <= today) next.setTime(next.getTime() + cyclMs)
-    return next.toISOString().split('T')[0]
+    return toLocalDateString(next)
   }
 
-  const monthsMap: Record<string, number> = { monthly: 1, quarterly: 3, yearly: 12 }
-  const months = monthsMap[cycle] ?? 1
+  const months = CYCLE_MONTHS[cycle] ?? 1
   const candidate = new Date(start)
 
   // Advance to the first future date
   while (candidate <= today) {
     candidate.setMonth(candidate.getMonth() + months)
   }
-  return candidate.toISOString().split('T')[0]
+  return toLocalDateString(candidate)
 }
 
 export function toLocalDateString(d: Date): string {
@@ -75,7 +74,7 @@ export function formatDate(dateStr: string): string {
 }
 
 export function todayString(): string {
-  return new Date().toISOString().split('T')[0]
+  return toLocalDateString(new Date())
 }
 
 export function generateBillingDates(startDate: string, cycle: BillingCycle, customDays: number | undefined, endDate: string): string[] {
@@ -96,8 +95,7 @@ export function generateBillingDates(startDate: string, cycle: BillingCycle, cus
     return dates
   }
 
-  const monthsMap: Record<string, number> = { monthly: 1, quarterly: 3, yearly: 12 }
-  const months = monthsMap[cycle] ?? 1
+  const months = CYCLE_MONTHS[cycle] ?? 1
   const cursor = new Date(start)
   while (true) {
     cursor.setMonth(cursor.getMonth() + months)
@@ -120,7 +118,6 @@ export function advanceBillingHistory(sub: Subscription): { billingHistory: Bill
   const nextFromLast = parseLocalDate(lastDate)
   const todayDate = parseLocalDate(today)
 
-  const monthsMap: Record<string, number> = { monthly: 1, quarterly: 3, yearly: 12 }
   const newRecords: BillingRecord[] = []
 
   if (sub.cycle === 'custom' && sub.customCycleDays && sub.customCycleDays > 0) {
@@ -132,7 +129,7 @@ export function advanceBillingHistory(sub: Subscription): { billingHistory: Bill
       newRecords.push({ date: toLocalDateString(cursor), amount: sub.amount })
     }
   } else {
-    const months = monthsMap[sub.cycle] ?? 1
+    const months = CYCLE_MONTHS[sub.cycle] ?? 1
     const cursor = new Date(nextFromLast)
     while (true) {
       cursor.setMonth(cursor.getMonth() + months)
@@ -328,6 +325,15 @@ export function parseImportData(text: string): ExportData {
   const data = JSON.parse(text) as Record<string, unknown>
   if (typeof data.version !== 'string') throw new Error('缺少 version 字段')
   if (!Array.isArray(data.subscriptions)) throw new Error('缺少 subscriptions 数组')
+  for (let i = 0; i < data.subscriptions.length; i++) {
+    const s = data.subscriptions[i] as Record<string, unknown>
+    if (typeof s.id !== 'string') throw new Error(`subscriptions[${i}] 缺少 id`)
+    if (typeof s.name !== 'string') throw new Error(`subscriptions[${i}] 缺少 name`)
+    if (typeof s.amount !== 'number') throw new Error(`subscriptions[${i}] amount 不是数字`)
+    if (s.currency !== 'CNY' && s.currency !== 'USD') throw new Error(`subscriptions[${i}] currency 无效`)
+    if (typeof s.startDate !== 'string') throw new Error(`subscriptions[${i}] 缺少 startDate`)
+    if (!Array.isArray(s.billingHistory)) throw new Error(`subscriptions[${i}] 缺少 billingHistory`)
+  }
   return data as unknown as ExportData
 }
 

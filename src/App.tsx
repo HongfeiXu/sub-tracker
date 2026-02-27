@@ -3,7 +3,7 @@ import type { Subscription, Category, ThemeMode, TabView } from './types'
 import { STORAGE_KEYS } from './constants'
 import { loadFromStorage, saveToStorage, getAllCategories, assignCategoryColor, calculateNextBillDate, generateBillingHistory, advanceBillingHistory, todayString, applyTheme } from './utils'
 import type { ExportData } from './types'
-import { Header, TabBar, FAB, DashboardView, SubscriptionsView, SubscriptionDrawer, SettingsPanel } from './components'
+import { Header, TabBar, FAB, DashboardView, SubscriptionsView, SubscriptionDrawer, SettingsPanel } from './components/index'
 
 export default function App() {
   const [theme, setTheme] = useState<ThemeMode>(() => loadFromStorage(STORAGE_KEYS.THEME, 'auto' as ThemeMode))
@@ -65,7 +65,7 @@ export default function App() {
     const billingHistory = generateBillingHistory(data.startDate, data.cycle, data.customCycleDays, data.amount, today)
     const newSub: Subscription = {
       ...data,
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+      id: crypto.randomUUID(),
       nextBillDate,
       billingHistory,
       status: 'active',
@@ -86,6 +86,7 @@ export default function App() {
       const customDaysChanged = data.customCycleDays !== undefined && data.customCycleDays !== s.customCycleDays
       if (amountChanged || cycleChanged || startDateChanged || customDaysChanged) {
         merged.billingHistory = generateBillingHistory(merged.startDate, merged.cycle, merged.customCycleDays, merged.amount, todayString())
+        merged.nextBillDate = calculateNextBillDate(merged.startDate, merged.cycle, merged.customCycleDays)
       }
       return merged
     }))

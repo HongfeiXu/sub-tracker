@@ -42,6 +42,12 @@ export const BRAND_COLORS: Record<string, string> = {
   京东: '#E4393C',
 }
 
+export const CYCLE_MONTHS: Record<string, number> = {
+  monthly: 1,
+  quarterly: 3,
+  yearly: 12,
+}
+
 export const CYCLE_LABELS: Record<BillingCycle, string> = {
   monthly: '月付',
   quarterly: '季付',
