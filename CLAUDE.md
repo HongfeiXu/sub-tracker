@@ -25,6 +25,24 @@
 - 类型：不使用 `any` 或 `unknown`，所有数据结构必须有明确类型定义
 - 注释：只在复杂业务逻辑处注释，组件和函数命名应自解释
 
+## 测试
+
+三层测试闭环，开发计划（plan）中按需标注每层覆盖哪些改动：
+
+- **tsc**（`npm run build`）— 类型检查
+- **vitest**（`npx vitest run`）— 纯函数单元测试，文件放 `src/*.test.ts`
+- **Playwright**（写临时 mjs 脚本跑）— 浏览器级验证：console 日志、截图、E2E 操作
+
+规则：
+- 新增/改动纯函数时，必须有对应 vitest 用例
+- UI 交互或集成验证用 Playwright，脚本跑完即删除
+- tsconfig.app.json 已排除 `src/**/*.test.ts` 和 `src/**/*.test.tsx`
+
+## 协作规范
+
+- 阶段回顾（RETRO.md）内容必须先问用户，不要自行编写
+- 明确的事情直接做，需要确认的直接问，不要反复确认显而易见的事
+
 ## 关键文档
 
 - 需求文档：`docs/PRD.md`

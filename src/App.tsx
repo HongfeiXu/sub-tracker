@@ -12,6 +12,11 @@ type ThemeMode = 'auto' | 'light' | 'dark'
 type TabView = 'dashboard' | 'subscriptions'
 type SubStatusFilter = 'active' | 'cancelled'
 
+interface BillingRecord {
+  date: string   // "YYYY-MM-DD"
+  amount: number
+}
+
 interface Subscription {
   id: string
   name: string
@@ -26,6 +31,7 @@ interface Subscription {
   status: SubscriptionStatus
   cancelledDate?: string
   note?: string
+  billingHistory: BillingRecord[]
   createdAt: string
   updatedAt: string
 }
@@ -224,6 +230,131 @@ function calcCategoryBreakdown(
     const map = sub.currency === 'CNY' ? cnyMap : usdMap
     const val = convert(sub.amount, sub.cycle, sub.customCycleDays)
     map.set(sub.category, (map.get(sub.category) ?? 0) + val)
+  }
+
+  const toArray = (map: Map<string, number>): CategoryBreakdownItem[] =>
+    Array.from(map.entries()).map(([name, value]) => {
+      const cat = allCategories.find((c) => c.name === name)
+      return { name, value, color: cat?.color ?? '#A78BFA' }
+    })
+
+  return { CNY: toArray(cnyMap), USD: toArray(usdMap) }
+}
+
+function toLocalDateString(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function parseLocalDate(s: string): Date {
+  const [y, m, d] = s.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+function generateBillingDates(startDate: string, cycle: BillingCycle, customDays: number | undefined, endDate: string): string[] {
+  const start = parseLocalDate(startDate)
+  const end = parseLocalDate(endDate)
+  if (start > end) return []
+
+  const dates: string[] = [toLocalDateString(start)]
+
+  if (cycle === 'custom' && customDays && customDays > 0) {
+    const cyclMs = customDays * 86400000
+    const cursor = new Date(start)
+    while (true) {
+      cursor.setTime(cursor.getTime() + cyclMs)
+      if (cursor > end) break
+      dates.push(toLocalDateString(cursor))
+    }
+    return dates
+  }
+
+  const monthsMap: Record<string, number> = { monthly: 1, quarterly: 3, yearly: 12 }
+  const months = monthsMap[cycle] ?? 1
+  const cursor = new Date(start)
+  while (true) {
+    cursor.setMonth(cursor.getMonth() + months)
+    if (cursor > end) break
+    dates.push(toLocalDateString(cursor))
+  }
+  return dates
+}
+
+function generateBillingHistory(startDate: string, cycle: BillingCycle, customDays: number | undefined, amount: number, endDate: string): BillingRecord[] {
+  return generateBillingDates(startDate, cycle, customDays, endDate).map((date) => ({ date, amount }))
+}
+
+function advanceBillingHistory(sub: Subscription): { billingHistory: BillingRecord[]; nextBillDate: string } {
+  if (sub.status === 'cancelled') {
+    return { billingHistory: sub.billingHistory, nextBillDate: sub.nextBillDate }
+  }
+  const today = todayString()
+  const lastDate = sub.billingHistory.length > 0 ? sub.billingHistory[sub.billingHistory.length - 1].date : sub.startDate
+  const nextFromLast = parseLocalDate(lastDate)
+  const todayDate = parseLocalDate(today)
+
+  const monthsMap: Record<string, number> = { monthly: 1, quarterly: 3, yearly: 12 }
+  const newRecords: BillingRecord[] = []
+
+  if (sub.cycle === 'custom' && sub.customCycleDays && sub.customCycleDays > 0) {
+    const cyclMs = sub.customCycleDays * 86400000
+    const cursor = new Date(nextFromLast)
+    while (true) {
+      cursor.setTime(cursor.getTime() + cyclMs)
+      if (cursor > todayDate) break
+      newRecords.push({ date: toLocalDateString(cursor), amount: sub.amount })
+    }
+  } else {
+    const months = monthsMap[sub.cycle] ?? 1
+    const cursor = new Date(nextFromLast)
+    while (true) {
+      cursor.setMonth(cursor.getMonth() + months)
+      if (cursor > todayDate) break
+      newRecords.push({ date: toLocalDateString(cursor), amount: sub.amount })
+    }
+  }
+
+  const billingHistory = [...sub.billingHistory, ...newRecords]
+  const nextBillDate = calculateNextBillDate(sub.startDate, sub.cycle, sub.customCycleDays)
+  return { billingHistory, nextBillDate }
+}
+
+function calcYearlyActualSpending(subscriptions: Subscription[]): { CNY: number; USD: number } {
+  const currentYear = new Date().getFullYear()
+  const yearPrefix = String(currentYear)
+  const result = { CNY: 0, USD: 0 }
+  for (const sub of subscriptions) {
+    for (const record of sub.billingHistory) {
+      if (record.date.startsWith(yearPrefix)) {
+        result[sub.currency] += record.amount
+      }
+    }
+  }
+  return result
+}
+
+function calcYearlyCategoryBreakdown(
+  subscriptions: Subscription[],
+  allCategories: Category[],
+): { CNY: CategoryBreakdownItem[]; USD: CategoryBreakdownItem[] } {
+  const currentYear = new Date().getFullYear()
+  const yearPrefix = String(currentYear)
+  const cnyMap = new Map<string, number>()
+  const usdMap = new Map<string, number>()
+
+  for (const sub of subscriptions) {
+    const map = sub.currency === 'CNY' ? cnyMap : usdMap
+    let yearTotal = 0
+    for (const record of sub.billingHistory) {
+      if (record.date.startsWith(yearPrefix)) {
+        yearTotal += record.amount
+      }
+    }
+    if (yearTotal > 0) {
+      map.set(sub.category, (map.get(sub.category) ?? 0) + yearTotal)
+    }
   }
 
   const toArray = (map: Map<string, number>): CategoryBreakdownItem[] =>
@@ -443,8 +574,8 @@ function StatsCard({
             </div>
           </div>
           {pieData.length > 0 && (
-            <div className="w-24 h-24 shrink-0">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="shrink-0">
+              <ResponsiveContainer width={96} height={96}>
                 <PieChart>
                   <Pie
                     data={pieData}
@@ -566,7 +697,8 @@ function DashboardView({
 }) {
   const summary = useMemo(() => calcSpendingSummary(subscriptions), [subscriptions])
   const monthlyBreakdown = useMemo(() => calcCategoryBreakdown(subscriptions, 'monthly', allCategories), [subscriptions, allCategories])
-  const yearlyBreakdown = useMemo(() => calcCategoryBreakdown(subscriptions, 'yearly', allCategories), [subscriptions, allCategories])
+  const yearlyActual = useMemo(() => calcYearlyActualSpending(subscriptions), [subscriptions])
+  const yearlyBreakdown = useMemo(() => calcYearlyCategoryBreakdown(subscriptions, allCategories), [subscriptions, allCategories])
 
   return (
     <div className="flex flex-col gap-4">
@@ -579,8 +711,8 @@ function DashboardView({
         />
         <StatsCard
           title="年度支出"
-          amountCNY={summary.CNY.yearly}
-          amountUSD={summary.USD.yearly}
+          amountCNY={yearlyActual.CNY}
+          amountUSD={yearlyActual.USD}
           chartData={yearlyBreakdown}
         />
       </div>
@@ -644,7 +776,7 @@ interface DrawerProps {
   open: boolean
   editingSub: Subscription | null
   allCategories: Category[]
-  onSave: (data: Omit<Subscription, 'id' | 'createdAt' | 'updatedAt' | 'nextBillDate' | 'status' | 'cancelledDate'>) => void
+  onSave: (data: Omit<Subscription, 'id' | 'createdAt' | 'updatedAt' | 'nextBillDate' | 'status' | 'cancelledDate' | 'billingHistory'>) => void
   onUpdate: (id: string, data: Partial<Subscription>) => void
   onDelete: (id: string) => void
   onCancel: () => void
@@ -971,8 +1103,8 @@ function SubscriptionDrawer({ open, editingSub, allCategories, onSave, onUpdate,
 // App
 // ============================================================
 
-export { DEFAULT_CATEGORIES }
-export type { Subscription, Category, Currency, BillingCycle, SubscriptionStatus }
+export { DEFAULT_CATEGORIES, generateBillingDates, generateBillingHistory, advanceBillingHistory, calcYearlyActualSpending, calcYearlyCategoryBreakdown }
+export type { Subscription, Category, Currency, BillingCycle, BillingRecord, SubscriptionStatus }
 
 export default function App() {
   const [theme, setTheme] = useState<ThemeMode>(() => loadFromStorage(STORAGE_KEYS.THEME, 'auto' as ThemeMode))
@@ -985,6 +1117,23 @@ export default function App() {
 
   const allCategories = useMemo(() => getAllCategories(customCategories), [customCategories])
   const editingSub = useMemo(() => editingId ? subscriptions.find((s) => s.id === editingId) ?? null : null, [editingId, subscriptions])
+
+  // Auto-advance billing history on app load
+  useEffect(() => {
+    setSubscriptions((prev) => {
+      let changed = false
+      const updated = prev.map((sub) => {
+        if (sub.status !== 'active') return sub
+        const result = advanceBillingHistory(sub)
+        if (result.billingHistory.length !== sub.billingHistory.length) {
+          changed = true
+          return { ...sub, billingHistory: result.billingHistory, nextBillDate: result.nextBillDate }
+        }
+        return sub
+      })
+      return changed ? updated : prev
+    })
+  }, [])
 
   // Persist subscriptions
   useEffect(() => { saveToStorage(STORAGE_KEYS.SUBSCRIPTIONS, subscriptions) }, [subscriptions])
@@ -1012,13 +1161,16 @@ export default function App() {
   const openEditDrawer = useCallback((id: string) => { setEditingId(id); setDrawerOpen(true) }, [])
   const closeDrawer = useCallback(() => { setDrawerOpen(false); setEditingId(null) }, [])
 
-  const handleSave = useCallback((data: Omit<Subscription, 'id' | 'createdAt' | 'updatedAt' | 'nextBillDate' | 'status' | 'cancelledDate'>) => {
+  const handleSave = useCallback((data: Omit<Subscription, 'id' | 'createdAt' | 'updatedAt' | 'nextBillDate' | 'status' | 'cancelledDate' | 'billingHistory'>) => {
     const now = new Date().toISOString()
+    const today = todayString()
     const nextBillDate = calculateNextBillDate(data.startDate, data.cycle, data.customCycleDays)
+    const billingHistory = generateBillingHistory(data.startDate, data.cycle, data.customCycleDays, data.amount, today)
     const newSub: Subscription = {
       ...data,
       id: crypto.randomUUID(),
       nextBillDate,
+      billingHistory,
       status: 'active',
       createdAt: now,
       updatedAt: now,
@@ -1028,7 +1180,18 @@ export default function App() {
   }, [closeDrawer])
 
   const handleUpdate = useCallback((id: string, data: Partial<Subscription>) => {
-    setSubscriptions((prev) => prev.map((s) => s.id === id ? { ...s, ...data, updatedAt: new Date().toISOString() } : s))
+    setSubscriptions((prev) => prev.map((s) => {
+      if (s.id !== id) return s
+      const merged = { ...s, ...data, updatedAt: new Date().toISOString() }
+      const amountChanged = data.amount !== undefined && data.amount !== s.amount
+      const cycleChanged = data.cycle !== undefined && data.cycle !== s.cycle
+      const startDateChanged = data.startDate !== undefined && data.startDate !== s.startDate
+      const customDaysChanged = data.customCycleDays !== undefined && data.customCycleDays !== s.customCycleDays
+      if (amountChanged || cycleChanged || startDateChanged || customDaysChanged) {
+        merged.billingHistory = generateBillingHistory(merged.startDate, merged.cycle, merged.customCycleDays, merged.amount, todayString())
+      }
+      return merged
+    }))
     closeDrawer()
   }, [closeDrawer])
 
@@ -1043,8 +1206,11 @@ export default function App() {
       if (s.status === 'active') {
         return { ...s, status: 'cancelled' as const, cancelledDate: todayString(), nextBillDate: '', updatedAt: new Date().toISOString() }
       }
-      const nextBillDate = calculateNextBillDate(s.startDate, s.cycle, s.customCycleDays)
-      return { ...s, status: 'active' as const, cancelledDate: undefined, nextBillDate, updatedAt: new Date().toISOString() }
+      const today = todayString()
+      const nextBillDate = calculateNextBillDate(today, s.cycle, s.customCycleDays)
+      const alreadyBilledToday = s.billingHistory.some((r) => r.date === today)
+      const billingHistory = alreadyBilledToday ? s.billingHistory : [...s.billingHistory, { date: today, amount: s.amount }]
+      return { ...s, status: 'active' as const, cancelledDate: undefined, nextBillDate, billingHistory, updatedAt: new Date().toISOString() }
     }))
     closeDrawer()
   }, [closeDrawer])
