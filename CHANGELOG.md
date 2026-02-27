@@ -1,5 +1,32 @@
 # Changelog
 
+## Phase 4 — 2026-02-27
+
+### 完成内容
+
+- 设置面板（SettingsPanel）：齿轮图标点开下拉面板，含主题切换、数据管理、关于信息
+- 主题切换 UI：三档 Segment 按钮（自动/浅色/深色），替换临时主题按钮
+- JSON 导出：一键下载 `subtracker-export-YYYY-MM-DD.json`
+- JSON 导入：文件选择 + 格式校验 + 确认覆盖对话框，非法文件给出错误提示
+- 空状态引导：Dashboard 和订阅列表无数据时显示引导文案
+- 新增 ExportData 类型定义
+- ConfirmDialog 支持自定义确认按钮文案
+
+### 基础设施
+
+- vitest 用例增至 22 个（新增 buildExportData / parseImportData 5 个用例）
+- Playwright E2E 11 个场景全部通过
+
+### 破坏性变更
+
+无
+
+### 遗留问题
+
+无
+
+---
+
 ## Phase 3.5 — 2026-02-27
 
 ### 完成内容

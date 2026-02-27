@@ -51,3 +51,10 @@ export interface ItemBreakdownItem {
   color: string
   category: string
 }
+
+export interface ExportData {
+  version: string
+  exportedAt: string
+  subscriptions: Subscription[]
+  categories: Category[]
+}

@@ -1,4 +1,4 @@
-import type { BillingCycle, BillingRecord, Category, CategoryBreakdownItem, ItemBreakdownItem, Subscription, SpendingSummary, ThemeMode } from './types'
+import type { BillingCycle, BillingRecord, Category, CategoryBreakdownItem, ExportData, ItemBreakdownItem, Subscription, SpendingSummary, ThemeMode } from './types'
 import { BRAND_COLORS, COLOR_PALETTE, DEFAULT_CATEGORIES } from './constants'
 
 // Storage
@@ -300,6 +300,35 @@ export function calcYearlyItemBreakdown(subscriptions: Subscription[]): { CNY: I
   }
   const sort = (arr: ItemBreakdownItem[]) => arr.sort((a, b) => a.category.localeCompare(b.category) || b.value - a.value)
   return { CNY: sort(cny), USD: sort(usd) }
+}
+
+// Export / Import
+
+export function buildExportData(subscriptions: Subscription[], customCategories: Category[]): ExportData {
+  return {
+    version: '1.0',
+    exportedAt: new Date().toISOString(),
+    subscriptions,
+    categories: customCategories,
+  }
+}
+
+export function downloadJson(data: ExportData): void {
+  const json = JSON.stringify(data, null, 2)
+  const blob = new Blob([json], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `subtracker-export-${todayString()}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export function parseImportData(text: string): ExportData {
+  const data = JSON.parse(text) as Record<string, unknown>
+  if (typeof data.version !== 'string') throw new Error('缺少 version 字段')
+  if (!Array.isArray(data.subscriptions)) throw new Error('缺少 subscriptions 数组')
+  return data as unknown as ExportData
 }
 
 // Theme

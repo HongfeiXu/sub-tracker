@@ -5,6 +5,8 @@ import {
   advanceBillingHistory,
   calcYearlyActualSpending,
   calcYearlyCategoryBreakdown,
+  buildExportData,
+  parseImportData,
 } from './utils'
 import { DEFAULT_CATEGORIES } from './constants'
 import type { Subscription, BillingRecord } from './types'
@@ -265,5 +267,51 @@ describe('calcYearlyCategoryBreakdown', () => {
     })
     const result = calcYearlyCategoryBreakdown([sub], DEFAULT_CATEGORIES)
     expect(result.CNY).toHaveLength(0)
+  })
+})
+
+// =============================================
+// buildExportData / parseImportData
+// =============================================
+
+describe('buildExportData', () => {
+  it('builds correct structure', () => {
+    mockToday('2026-02-27')
+    const sub = makeSub()
+    const cats = [{ name: '自定义', color: '#123456' }]
+    const result = buildExportData([sub], cats)
+    expect(result.version).toBe('1.0')
+    expect(result.exportedAt).toBeTruthy()
+    expect(result.subscriptions).toHaveLength(1)
+    expect(result.subscriptions[0].name).toBe('Test Sub')
+    expect(result.categories).toEqual(cats)
+  })
+})
+
+describe('parseImportData', () => {
+  it('parses valid JSON', () => {
+    const json = JSON.stringify({
+      version: '1.0',
+      exportedAt: '2026-02-27T00:00:00Z',
+      subscriptions: [makeSub()],
+      categories: [],
+    })
+    const result = parseImportData(json)
+    expect(result.version).toBe('1.0')
+    expect(result.subscriptions).toHaveLength(1)
+  })
+
+  it('throws on missing version', () => {
+    const json = JSON.stringify({ subscriptions: [] })
+    expect(() => parseImportData(json)).toThrow('缺少 version 字段')
+  })
+
+  it('throws on missing subscriptions', () => {
+    const json = JSON.stringify({ version: '1.0' })
+    expect(() => parseImportData(json)).toThrow('缺少 subscriptions 数组')
+  })
+
+  it('throws on invalid JSON', () => {
+    expect(() => parseImportData('not json')).toThrow()
   })
 })

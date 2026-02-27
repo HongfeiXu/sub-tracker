@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
-import type { Category, CategoryBreakdownItem, Currency, BillingCycle, ItemBreakdownItem, Subscription, SubStatusFilter, TabView } from './types'
+import type { Category, CategoryBreakdownItem, Currency, BillingCycle, ItemBreakdownItem, Subscription, SubStatusFilter, TabView, ThemeMode, ExportData } from './types'
 import { COLOR_PALETTE, CYCLE_LABELS, DEFAULT_CATEGORIES } from './constants'
-import { formatDate, todayString, matchBrandColor, calculateNextBillDate, calcSpendingSummary, calcCategoryBreakdown, calcMonthlyItemBreakdown, calcYearlyActualSpending, calcYearlyCategoryBreakdown, calcYearlyItemBreakdown } from './utils'
+import { formatDate, todayString, matchBrandColor, calculateNextBillDate, calcSpendingSummary, calcCategoryBreakdown, calcMonthlyItemBreakdown, calcYearlyActualSpending, calcYearlyCategoryBreakdown, calcYearlyItemBreakdown, buildExportData, downloadJson, parseImportData } from './utils'
 
 // Icons (internal, not exported)
 
@@ -94,7 +94,7 @@ export function FAB({ onClick }: { onClick: () => void }) {
 
 // Dialogs
 
-export function ConfirmDialog({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) {
+export function ConfirmDialog({ message, confirmLabel, onConfirm, onCancel }: { message: string; confirmLabel?: string; onConfirm: () => void; onCancel: () => void }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={onCancel}>
       <div className="bg-[var(--color-card)] rounded-2xl p-6 mx-6 max-w-sm w-full shadow-xl" onClick={(e) => e.stopPropagation()}>
@@ -104,11 +104,165 @@ export function ConfirmDialog({ message, onConfirm, onCancel }: { message: strin
             取消
           </button>
           <button onClick={onConfirm} className="flex-1 py-2.5 text-sm rounded-xl bg-red-500 text-white">
-            确认删除
+            {confirmLabel ?? '确认删除'}
           </button>
         </div>
       </div>
     </div>
+  )
+}
+
+// Settings Panel
+
+function DownloadIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  )
+}
+
+function UploadIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" y1="3" x2="12" y2="15" />
+    </svg>
+  )
+}
+
+export function SettingsPanel({
+  theme,
+  onThemeChange,
+  subscriptions,
+  customCategories,
+  onImport,
+  onClose,
+}: {
+  theme: ThemeMode
+  onThemeChange: (t: ThemeMode) => void
+  subscriptions: Subscription[]
+  customCategories: Category[]
+  onImport: (data: ExportData) => void
+  onClose: () => void
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [showImportConfirm, setShowImportConfirm] = useState(false)
+  const [pendingImport, setPendingImport] = useState<ExportData | null>(null)
+
+  const themeOptions: { value: ThemeMode; label: string }[] = [
+    { value: 'auto', label: '自动' },
+    { value: 'light', label: '浅色' },
+    { value: 'dark', label: '深色' },
+  ]
+
+  const handleExport = () => {
+    const data = buildExportData(subscriptions, customCategories)
+    downloadJson(data)
+  }
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const data = parseImportData(reader.result as string)
+        setPendingImport(data)
+        setShowImportConfirm(true)
+      } catch (err) {
+        alert(`导入失败：${err instanceof Error ? err.message : '文件格式不正确'}`)
+      }
+    }
+    reader.readAsText(file)
+    // reset so the same file can be selected again
+    e.target.value = ''
+  }
+
+  const confirmImport = () => {
+    if (pendingImport) {
+      onImport(pendingImport)
+      setPendingImport(null)
+      setShowImportConfirm(false)
+      onClose()
+    }
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div
+        className="absolute top-14 right-4 w-72 rounded-2xl bg-[var(--color-card)] border border-[var(--color-divider)] shadow-xl z-50"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 pt-4 pb-2">
+          <p className="text-sm font-bold text-[var(--color-text-primary)]">设置</p>
+          <button onClick={onClose} className="p-1 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]">
+            <CloseIcon />
+          </button>
+        </div>
+
+        {/* Theme */}
+        <div className="px-4 py-3">
+          <p className="text-xs text-[var(--color-text-secondary)] mb-2">主题</p>
+          <div className="flex p-1 rounded-xl bg-[var(--color-bg)]">
+            {themeOptions.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => onThemeChange(opt.value)}
+                className={`flex-1 py-2 text-xs font-medium rounded-lg transition-colors ${
+                  theme === opt.value
+                    ? 'bg-[var(--color-accent)] text-white'
+                    : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Data management */}
+        <div className="px-4 py-3 border-t border-[var(--color-divider)]">
+          <p className="text-xs text-[var(--color-text-secondary)] mb-2">数据管理</p>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={handleExport}
+              className="flex items-center gap-2 w-full px-3 py-2.5 text-xs font-medium rounded-xl bg-[var(--color-bg)] text-[var(--color-text-primary)] hover:opacity-80 transition-opacity"
+            >
+              <UploadIcon />
+              导出数据
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-2 w-full px-3 py-2.5 text-xs font-medium rounded-xl bg-[var(--color-bg)] text-[var(--color-text-primary)] hover:opacity-80 transition-opacity"
+            >
+              <DownloadIcon />
+              导入数据
+            </button>
+            <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleFileSelect} />
+          </div>
+        </div>
+
+        {/* About */}
+        <div className="px-4 py-3 border-t border-[var(--color-divider)]">
+          <p className="text-xs text-[var(--color-text-secondary)]">SubTracker v1.0</p>
+        </div>
+      </div>
+
+      {showImportConfirm && (
+        <ConfirmDialog
+          message="将替换当前所有数据，是否继续？"
+          confirmLabel="确认导入"
+          onConfirm={confirmImport}
+          onCancel={() => { setShowImportConfirm(false); setPendingImport(null) }}
+        />
+      )}
+    </>
   )
 }
 
@@ -387,6 +541,16 @@ export function DashboardView({
   const yearlyBreakdown = useMemo(() => calcYearlyCategoryBreakdown(subscriptions, allCategories), [subscriptions, allCategories])
   const yearlyItems = useMemo(() => calcYearlyItemBreakdown(subscriptions), [subscriptions])
 
+  if (subscriptions.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <p className="text-4xl mb-4">📋</p>
+        <p className="text-base font-medium text-[var(--color-text-primary)] mb-2">还没有任何订阅</p>
+        <p className="text-sm text-[var(--color-text-secondary)]">点击右下角的 + 添加你的第一条订阅</p>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -445,8 +609,16 @@ export function SubscriptionsView({
       </div>
 
       {filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-[var(--color-text-secondary)]">
-          <p className="text-sm">{filter === 'active' ? '暂无生效中的订阅' : '暂无已取消的订阅'}</p>
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          {filter === 'active' ? (
+            <>
+              <p className="text-4xl mb-4">📭</p>
+              <p className="text-sm text-[var(--color-text-primary)] mb-1">暂无生效中的订阅</p>
+              <p className="text-xs text-[var(--color-text-secondary)]">点击右下角的 + 开始记录</p>
+            </>
+          ) : (
+            <p className="text-sm text-[var(--color-text-secondary)]">暂无已取消的订阅</p>
+          )}
         </div>
       ) : (
         <div className="flex flex-col gap-3">

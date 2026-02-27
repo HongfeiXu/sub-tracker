@@ -21,3 +21,9 @@
 - Recharts `ResponsiveContainer` 百分比尺寸首次渲染会算出 -1，小图直接用固定 `width/height`
 - 数据结构破坏性变更（billingHistory）目前靠清 localStorage 解决，后续有真实用户数据时需要 migration 逻辑
 - 单文件已超 1200 行，Phase 4 后应评估拆分
+
+## Phase 4 — 2026-02-27
+
+- 四个阶段里最顺的一个，没有返工、没有数据结构变更、没有意外 bug——前面 Phase 3/3.5 把架构理清楚了，到这一步基本是往框架里填功能
+- 强关联的任务（设置面板 + 导出 + 导入）一口气做完比拆开做效率高，避免多次改同一个文件
+- 复用组件时顺手加参数（ConfirmDialog 的 `confirmLabel`）比抄一个新组件好，保持组件少而灵活

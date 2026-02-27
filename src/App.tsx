@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import type { Subscription, Category, ThemeMode, TabView } from './types'
 import { STORAGE_KEYS } from './constants'
 import { loadFromStorage, saveToStorage, getAllCategories, assignCategoryColor, calculateNextBillDate, generateBillingHistory, advanceBillingHistory, todayString, applyTheme } from './utils'
-import { Header, TabBar, FAB, DashboardView, SubscriptionsView, SubscriptionDrawer } from './components'
+import type { ExportData } from './types'
+import { Header, TabBar, FAB, DashboardView, SubscriptionsView, SubscriptionDrawer, SettingsPanel } from './components'
 
 export default function App() {
   const [theme, setTheme] = useState<ThemeMode>(() => loadFromStorage(STORAGE_KEYS.THEME, 'auto' as ThemeMode))
@@ -48,11 +49,9 @@ export default function App() {
 
   const handleSettingsClick = useCallback(() => setShowSettings((p) => !p), [])
 
-  const cycleTheme = useCallback(() => {
-    setTheme((prev) => {
-      const order: ThemeMode[] = ['auto', 'light', 'dark']
-      return order[(order.indexOf(prev) + 1) % order.length]
-    })
+  const handleImport = useCallback((data: ExportData) => {
+    setSubscriptions(data.subscriptions)
+    setCustomCategories(data.categories ?? [])
   }, [])
 
   const openNewDrawer = useCallback(() => { setEditingId(null); setDrawerOpen(true) }, [])
@@ -131,28 +130,18 @@ export default function App() {
             <SubscriptionsView subscriptions={subscriptions} onEdit={openEditDrawer} />
           )}
 
-          {/* Temporary theme switcher */}
-          <div className="fixed bottom-6 left-6 z-50">
-            <button
-              onClick={cycleTheme}
-              className="px-3 py-2 text-xs rounded-xl bg-[var(--color-card)] text-[var(--color-text-secondary)] border border-[var(--color-divider)]"
-            >
-              主题: {theme === 'auto' ? '自动' : theme === 'light' ? '浅色' : '深色'}
-            </button>
-          </div>
         </main>
       </div>
 
       {showSettings && (
-        <div className="fixed inset-0 z-40" onClick={() => setShowSettings(false)}>
-          <div
-            className="absolute top-14 right-4 w-64 p-4 rounded-2xl bg-[var(--color-card)] border border-[var(--color-divider)] shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p className="text-sm font-medium text-[var(--color-text-primary)] mb-1">设置</p>
-            <p className="text-xs text-[var(--color-text-secondary)]">Phase 4 实现</p>
-          </div>
-        </div>
+        <SettingsPanel
+          theme={theme}
+          onThemeChange={setTheme}
+          subscriptions={subscriptions}
+          customCategories={customCategories}
+          onImport={handleImport}
+          onClose={() => setShowSettings(false)}
+        />
       )}
 
       <SubscriptionDrawer
