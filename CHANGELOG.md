@@ -1,5 +1,28 @@
 # Changelog
 
+## Phase 3.5 — 2026-02-27
+
+### 完成内容
+
+- App.tsx 拆分重构：1380 行单文件拆为 5 个模块
+  - `types.ts` — 所有类型定义
+  - `constants.ts` — 所有常量
+  - `utils.ts` — 所有工具函数
+  - `components.tsx` — 所有 UI 组件
+  - `App.tsx` — 状态 + handlers + render
+- 依赖方向严格单向，无循环依赖
+- 更新 billing.test.ts import 路径
+
+### 破坏性变更
+
+无（纯重构，零功能变更）
+
+### 遗留问题
+
+无
+
+---
+
 ## Phase 3 — 2026-02-27
 
 ### 完成内容

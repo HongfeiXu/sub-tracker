@@ -9,7 +9,7 @@
 | 项目 | 选择 | 理由 |
 |------|------|------|
 | 语言 | TypeScript | 类型安全，枚举字段（currency / cycle / status）防拼写错误 |
-| 框架 | React（单 .tsx 文件） | 组件化开发，状态管理方便 |
+| 框架 | React（模块化拆分） | 组件化开发，状态管理方便 |
 | 样式 | Tailwind CSS v4 | 快速开发，CSS-first 配置，暗色模式内置支持 |
 | 图表 | Recharts | 轻量，React 生态，支持环形图 |
 | ID 生成 | Date.now + Math.random | 浏览器兼容性好，不依赖 secure context |
@@ -40,10 +40,15 @@ sub-tracker/
 ├── index.html              # 入口 HTML
 └── src/
     ├── index.css            # Tailwind CSS 入口（@import "tailwindcss"）
-    └── App.tsx              # 单文件 React 应用
+    ├── types.ts             # 所有类型定义
+    ├── constants.ts         # 所有常量（依赖 types）
+    ├── utils.ts             # 所有工具函数（依赖 types, constants）
+    ├── components.tsx       # 所有 UI 组件（依赖 types, constants, utils）
+    ├── App.tsx              # App 组件：状态 + handlers + render（依赖以上全部）
+    └── billing.test.ts      # 单元测试（依赖 types, constants, utils）
 ```
 
-> 注：v1 采用单 .tsx 文件方案，所有组件、逻辑、样式集中在 `src/App.tsx` 中。后续如需拆分，再调整目录结构。
+> 依赖方向严格单向：`types.ts → constants.ts → utils.ts → components.tsx → App.tsx`，无循环依赖。
 >
 > Tailwind CSS v4 使用 CSS-first 配置，通过 `@import "tailwindcss"` 引入，无需 `tailwind.config.js` 和 `postcss.config.js`。通过 Vite 插件 `@tailwindcss/vite` 集成。
 
@@ -244,7 +249,7 @@ App
 | 决策 | 理由 |
 |------|------|
 | TypeScript 而非 JavaScript | 数据模型有明确枚举，TS 类型安全收益大，Vite 零配置支持 |
-| 单 .tsx 文件 | v1 功能简单，单文件降低复杂度，避免过早拆分 |
+| 5 文件模块化 | Phase 3.5 拆分，单向依赖，降低维护成本 |
 | Tailwind v4 而非 v3 | CSS-first 配置，免去 tailwind.config.js 和 postcss.config.js |
 | 不引入路由库 | 只有 2 个 Tab 视图，用状态切换即可 |
 | 不引入状态管理库 | useState + useReducer 足够，不需要 Redux / Zustand |

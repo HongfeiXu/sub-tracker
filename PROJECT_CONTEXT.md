@@ -2,9 +2,9 @@
 
 ## 当前状态
 
-- **阶段**: Phase 3 验收完成，准备进入 Phase 4
-- **进度**: ~75%
-- **待办**: Phase 3 回顾 → 编写 PLAN-PHASE-4.md → 开发 Phase 4
+- **阶段**: Phase 3.5 验收完成，准备进入 Phase 4
+- **进度**: ~80%
+- **待办**: 编写 PLAN-PHASE-4.md → 开发 Phase 4
 
 ## 已完成阶段
 
@@ -34,10 +34,15 @@
 - 三层测试闭环：tsc + vitest + Playwright
 - 响应式布局：移动端堆叠 / 桌面端并排
 
+### Phase 3.5 — App.tsx 拆分重构（2026-02-27 验收通过）
+
+- 1380 行 App.tsx 拆为 5 个模块（types / constants / utils / components / App）
+- 依赖方向单向，无循环依赖
+- 三层测试验证：tsc ✅ / vitest 17/17 ✅ / Playwright 10/10 ✅
+
 ## 已知问题 / 技术债
 
 - Subscription 新增 billingHistory 字段后不兼容旧数据（Phase 3 起需清 localStorage）
-- 单文件 App.tsx 已超 1200 行，Phase 4 后可评估拆分
 
 ## 关键决策日志
 
@@ -51,6 +56,5 @@
 
 ## 下一步
 
-1. Phase 3 回顾（追加到 docs/RETRO.md）
-2. 编写 PLAN-PHASE-4.md（设置面板、导入导出、空状态、响应式适配）
-3. 开发 Phase 4
+1. 编写 PLAN-PHASE-4.md（设置面板、导入导出、空状态、响应式适配）
+2. 开发 Phase 4

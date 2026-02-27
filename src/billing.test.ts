@@ -5,9 +5,9 @@ import {
   advanceBillingHistory,
   calcYearlyActualSpending,
   calcYearlyCategoryBreakdown,
-  DEFAULT_CATEGORIES,
-} from './App'
-import type { Subscription, BillingRecord } from './App'
+} from './utils'
+import { DEFAULT_CATEGORIES } from './constants'
+import type { Subscription, BillingRecord } from './types'
 
 function makeSub(overrides: Partial<Subscription> = {}): Subscription {
   return {

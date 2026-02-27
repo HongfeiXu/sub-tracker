@@ -82,8 +82,8 @@ types.ts → constants.ts → utils.ts → components.tsx → App.tsx
 
 ## 测试计划
 
-| # | 验证项 | 方式 | 测试层级 |
-|---|--------|------|----------|
-| 1 | 类型检查通过 | `npm run build` | tsc |
-| 2 | 单元测试通过（17 个用例） | `npx vitest run` | vitest |
-| 3 | 功能不变 | 浏览器手动确认 | 人工 |
+| # | 验证项 | 方式 | 测试层级 | 结果 |
+|---|--------|------|----------|------|
+| 1 | 类型检查通过 | `npm run build` | tsc | ✅ |
+| 2 | 单元测试通过（17 个用例） | `npx vitest run` | vitest | ✅ 17/17 |
+| 3 | 功能不变（复用 PLAN-PHASE-3 的 10 个 E2E 场景） | Playwright 自动化 | Playwright | ✅ 10/10 |
