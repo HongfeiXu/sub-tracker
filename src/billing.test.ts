@@ -3,8 +3,10 @@ import {
   generateBillingDates,
   generateBillingHistory,
   advanceBillingHistory,
+  calcMonthlyItemBreakdown,
   calcYearlyActualSpending,
   calcYearlyCategoryBreakdown,
+  calcYearlyItemBreakdown,
   buildExportData,
   parseImportData,
 } from './utils'
@@ -267,6 +269,77 @@ describe('calcYearlyCategoryBreakdown', () => {
     })
     const result = calcYearlyCategoryBreakdown([sub], DEFAULT_CATEGORIES)
     expect(result.CNY).toHaveLength(0)
+  })
+})
+
+// =============================================
+// calcMonthlyItemBreakdown / calcYearlyItemBreakdown
+// =============================================
+
+describe('item breakdown sorting', () => {
+  it('sorts monthly CNY items by amount descending', () => {
+    const result = calcMonthlyItemBreakdown([
+      makeSub({
+        id: 'monthly-1',
+        name: 'A 影音娱乐',
+        amount: 20,
+        category: '影音娱乐',
+      }),
+      makeSub({
+        id: 'monthly-2',
+        name: 'B 工具软件',
+        amount: 80,
+        category: '工具软件',
+      }),
+      makeSub({
+        id: 'monthly-3',
+        name: 'C 效率',
+        amount: 50,
+        category: '效率',
+      }),
+    ])
+
+    expect(result.CNY.map((item) => item.name)).toEqual([
+      'B 工具软件',
+      'C 效率',
+      'A 影音娱乐',
+    ])
+  })
+
+  it('sorts yearly CNY items by amount descending', () => {
+    mockToday('2026-02-27')
+    const result = calcYearlyItemBreakdown([
+      makeSub({
+        id: 'yearly-1',
+        name: 'A 影音娱乐',
+        category: '影音娱乐',
+        billingHistory: [
+          { date: '2026-01-01', amount: 20 },
+        ],
+      }),
+      makeSub({
+        id: 'yearly-2',
+        name: 'B 工具软件',
+        category: '工具软件',
+        billingHistory: [
+          { date: '2026-01-01', amount: 80 },
+        ],
+      }),
+      makeSub({
+        id: 'yearly-3',
+        name: 'C 效率',
+        category: '效率',
+        billingHistory: [
+          { date: '2026-01-01', amount: 50 },
+        ],
+      }),
+    ])
+
+    expect(result.CNY.map((item) => item.name)).toEqual([
+      'B 工具软件',
+      'C 效率',
+      'A 影音娱乐',
+    ])
   })
 })
 

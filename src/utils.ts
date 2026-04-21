@@ -277,7 +277,7 @@ export function calcMonthlyItemBreakdown(subscriptions: Subscription[]): { CNY: 
     const item = { name: sub.name, value, color: sub.color, category: sub.category }
     if (sub.currency === 'CNY') cny.push(item); else usd.push(item)
   }
-  const sort = (arr: ItemBreakdownItem[]) => arr.sort((a, b) => a.category.localeCompare(b.category) || b.value - a.value)
+  const sort = (arr: ItemBreakdownItem[]) => arr.sort((a, b) => b.value - a.value || a.category.localeCompare(b.category) || a.name.localeCompare(b.name))
   return { CNY: sort(cny), USD: sort(usd) }
 }
 
@@ -295,7 +295,7 @@ export function calcYearlyItemBreakdown(subscriptions: Subscription[]): { CNY: I
     const item = { name: sub.name, value: yearTotal, color: sub.color, category: sub.category }
     if (sub.currency === 'CNY') cny.push(item); else usd.push(item)
   }
-  const sort = (arr: ItemBreakdownItem[]) => arr.sort((a, b) => a.category.localeCompare(b.category) || b.value - a.value)
+  const sort = (arr: ItemBreakdownItem[]) => arr.sort((a, b) => b.value - a.value || a.category.localeCompare(b.category) || a.name.localeCompare(b.name))
   return { CNY: sort(cny), USD: sort(usd) }
 }
 
