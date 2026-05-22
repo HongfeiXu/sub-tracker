@@ -14,6 +14,7 @@ import {
   getActivePriceSegment,
   applyPriceChangeFromDate,
   parseImportData,
+  reactivateSubscription,
   rewriteSubscriptionBilling,
   syncActiveSubscriptionBilling,
 } from './utils'
@@ -218,6 +219,38 @@ describe('syncActiveSubscriptionBilling', () => {
 })
 
 // =============================================
+// reactivateSubscription
+// =============================================
+
+describe('reactivateSubscription', () => {
+  it('fills scheduled records through cancellation date but does not append reactivation date', () => {
+    mockToday('2026-04-21')
+    const sub = makeSub({
+      name: 'Chatgpt',
+      amount: 20,
+      currency: 'USD',
+      status: 'cancelled',
+      startDate: '2026-03-04',
+      nextBillDate: '',
+      cancelledDate: '2026-04-21',
+      billingHistory: [
+        { date: '2026-03-04', amount: 20, currency: 'USD' },
+      ],
+    })
+
+    const result = reactivateSubscription(sub)
+
+    expect(result.status).toBe('active')
+    expect(result.cancelledDate).toBeUndefined()
+    expect(result.nextBillDate).toBe('2026-05-04')
+    expect(result.billingHistory).toEqual([
+      { date: '2026-03-04', amount: 20, currency: 'USD' },
+      { date: '2026-04-04', amount: 20, currency: 'USD', priceSegmentId: 'test-1-price-1' },
+    ])
+  })
+})
+
+// =============================================
 // priceHistory
 // =============================================
 
@@ -373,9 +406,8 @@ describe('calcYearlyActualSpending', () => {
     expect(result.CNY).toBe(48)
   })
 
-  it('duplicate records on same date should not exist (reactivation guard)', () => {
+  it('does not deduplicate unrelated existing records', () => {
     mockToday('2026-02-27')
-    // Simulate: already has a record for today, reactivating should not add another
     const sub = makeSub({
       billingHistory: [
         { date: '2026-01-01', amount: 48 },
@@ -386,7 +418,6 @@ describe('calcYearlyActualSpending', () => {
     const todayRecords = sub.billingHistory.filter((r) => r.date === '2026-02-27')
     expect(todayRecords).toHaveLength(1)
     const result = calcYearlyActualSpending([sub])
-    // Should be 3 records in 2026: Jan + Feb + Feb27 = 144
     expect(result.CNY).toBe(144)
   })
 

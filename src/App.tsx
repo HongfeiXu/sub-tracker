@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import type { Subscription, Category, ThemeMode, TabView, PriceChangeMode } from './types'
 import { STORAGE_KEYS } from './constants'
-import { loadFromStorage, saveToStorage, getAllCategories, assignCategoryColor, applyPriceChangeFromDate, calculateNextBillDate, calculateSubscriptionNextBillDate, generateBillingHistory, generateId, rewriteSubscriptionBilling, syncActiveSubscriptionBilling, todayString, applyTheme } from './utils'
+import { loadFromStorage, saveToStorage, getAllCategories, assignCategoryColor, applyPriceChangeFromDate, calculateSubscriptionNextBillDate, generateBillingHistory, generateId, reactivateSubscription, rewriteSubscriptionBilling, syncActiveSubscriptionBilling, todayString, applyTheme } from './utils'
 import type { ExportData } from './types'
 import { Header, TabBar, FAB, DashboardView, SubscriptionsView, BillingHistoryView, SubscriptionDrawer, SettingsPanel } from './components/index'
 
@@ -131,11 +131,7 @@ export default function App() {
       if (s.status === 'active') {
         return { ...s, status: 'cancelled' as const, cancelledDate: todayString(), nextBillDate: '', updatedAt: new Date().toISOString() }
       }
-      const today = todayString()
-      const nextBillDate = calculateNextBillDate(today, s.cycle, s.customCycleDays)
-      const alreadyBilledToday = s.billingHistory.some((r) => r.date === today)
-      const billingHistory = alreadyBilledToday ? s.billingHistory : [...s.billingHistory, { date: today, amount: s.amount, currency: s.currency }]
-      return { ...s, status: 'active' as const, cancelledDate: undefined, nextBillDate, billingHistory, updatedAt: new Date().toISOString() }
+      return { ...reactivateSubscription(s), updatedAt: new Date().toISOString() }
     }))
     closeDrawer()
   }, [closeDrawer])

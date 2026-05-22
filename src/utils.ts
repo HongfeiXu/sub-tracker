@@ -199,20 +199,24 @@ export function generateBillingHistory(startDate: string, cycle: BillingCycle, c
   }))
 }
 
-export function advanceBillingHistory(sub: Subscription): { billingHistory: BillingRecord[]; nextBillDate: string } {
-  if (sub.status === 'cancelled') {
-    return { billingHistory: sub.billingHistory, nextBillDate: sub.nextBillDate }
-  }
-  const today = todayString()
+function fillMissingBillingRecords(sub: Subscription, endDate: string): BillingRecord[] {
   const existingDates = new Set(sub.billingHistory.map((record) => record.date))
-  const missingRecords = generateBillingHistoryFromPriceHistory(sub, today)
+  const missingRecords = generateBillingHistoryFromPriceHistory(sub, endDate)
     .filter((record) => !existingDates.has(record.date))
   const normalizedExisting = sub.billingHistory.map((record) => ({
     ...record,
     currency: record.currency ?? sub.currency,
   }))
-  const billingHistory = [...normalizedExisting, ...missingRecords]
+  return [...normalizedExisting, ...missingRecords]
     .sort((a, b) => a.date.localeCompare(b.date))
+}
+
+export function advanceBillingHistory(sub: Subscription): { billingHistory: BillingRecord[]; nextBillDate: string } {
+  if (sub.status === 'cancelled') {
+    return { billingHistory: sub.billingHistory, nextBillDate: sub.nextBillDate }
+  }
+  const today = todayString()
+  const billingHistory = fillMissingBillingRecords(sub, today)
   const nextBillDate = calculateSubscriptionNextBillDate(sub)
   return { billingHistory, nextBillDate }
 }
@@ -293,6 +297,18 @@ export function rewriteSubscriptionBilling(sub: Subscription, data: BillingField
     ...updated,
     billingHistory: generateBillingHistory(data.startDate, data.cycle, data.customCycleDays, data.amount, today, data.currency, segment.id),
     nextBillDate: calculateSubscriptionNextBillDate(updated),
+  }
+}
+
+export function reactivateSubscription(sub: Subscription): Subscription {
+  const normalized = ensurePriceHistory(sub)
+  const billingHistory = fillMissingBillingRecords(normalized, normalized.cancelledDate ?? todayString())
+  return {
+    ...normalized,
+    status: 'active',
+    cancelledDate: undefined,
+    billingHistory,
+    nextBillDate: calculateSubscriptionNextBillDate(normalized),
   }
 }
 

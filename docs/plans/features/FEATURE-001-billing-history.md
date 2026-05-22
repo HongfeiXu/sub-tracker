@@ -64,7 +64,7 @@ interface Subscription {
 | **编辑**（其他字段） | 不动 billingHistory |
 | **删除** | 整条数据删除 |
 | **取消** | billingHistory 保留不变，不再生成新记录 |
-| **重新激活** | 追加今天的扣款记录，nextBillDate 从今天算新周期 |
+| **重新激活** | 补齐取消日期前按周期应发生但缺失的记录，恢复 active 状态，清空 cancelledDate，重算 nextBillDate，不追加操作当天扣款 |
 
 ## 4. App 加载时自动推进
 
@@ -95,7 +95,7 @@ interface Subscription {
 4. 加 `calcYearlyActualSpending` + `calcYearlyCategoryBreakdown`
 5. 改 `handleSave`（创建时回填 billingHistory）
 6. 改 `handleUpdate`（编辑时重新生成）
-7. 改 `handleToggleStatus`（取消不动 / 重订追加记录+新周期）
+7. 改 `handleToggleStatus`（取消不动 / 重新激活补齐取消日前缺失记录，并恢复状态、重算 nextBillDate）
 8. 加 app 加载自动推进 useEffect
 9. 改 `DashboardView` 使用新的年度统计
 10. 清 localStorage，手动测试
@@ -128,7 +128,7 @@ interface Subscription {
 
 | # | 问题 | 原因 | 修复 | 验证 |
 |---|------|------|------|------|
-| 1 | 反复取消/重新激活同一订阅，年度支出不断增加 | `handleToggleStatus` 激活时无条件追加今天的扣款记录 | 加 `alreadyBilledToday` 检查，同日不重复追加 | ✅ E2E 反复 toggle 3 次后年度不变 |
+| 1 | 反复取消/重新激活同一订阅，年度支出不断增加 | `handleToggleStatus` 激活时无条件追加今天的扣款记录 | 重新激活补齐取消日前按周期应发生的记录，但不追加操作当天 | ✅ Vitest 覆盖 ChatGPT 2026-04-04 / 2026-04-21 场景 |
 
 ## E2E 验证（Playwright） — 2026-02-27 全部通过
 
@@ -137,6 +137,6 @@ interface Subscription {
 | 1 | 创建月付 ¥48（startDate 2025-12-01）| 月度 ¥48，年度 ¥96（1月+2月两笔）| ✅ 月度 ¥48, 年度 ¥96 |
 | 2 | 再创建年付 $119.88（startDate 2025-01-15）| 年度新增 $119.88 | ✅ 年度 $119.88 |
 | 3 | 取消 Netflix → 查看年度支出 | 年度 CNY 不减少（仍含已扣金额）| ✅ 年度 CNY = 96（不变）|
-| 4 | 重新激活 Netflix → 查看年度支出 | 年度 CNY 增加（追加今天扣款）| ✅ 年度 CNY = 144（+48）|
+| 4 | 重新激活 Netflix → 查看年度支出 | 年度 CNY 不因操作日期增加 | ✅ 后续修正：重新激活不追加扣款记录 |
 | 5 | 月度支出仅反映活跃订阅月费率 | 取消后月度减少，重新激活后恢复 | ✅ 取消后 undefined，激活后 ¥48 |
 | 6 | 刷新页面后数据正确 | localStorage 恢复，金额不变 | ✅ 月度 CNY=48 USD=9.99，年度 CNY=144 USD=119.88 |
