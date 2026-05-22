@@ -99,6 +99,23 @@ describe('generateBillingHistory', () => {
 // =============================================
 
 describe('advanceBillingHistory', () => {
+  it('creates the first record when active history is empty and startDate has passed', () => {
+    mockToday('2026-05-22')
+    const sub = makeSub({
+      cycle: 'yearly',
+      startDate: '2026-03-17',
+      nextBillDate: '2026-03-17',
+      billingHistory: [],
+    })
+
+    const result = advanceBillingHistory(sub)
+
+    expect(result.billingHistory).toEqual([
+      { date: '2026-03-17', amount: 48 },
+    ])
+    expect(result.nextBillDate).toBe('2027-03-17')
+  })
+
   it('fills missing records for active subscription', () => {
     mockToday('2026-02-27')
     const sub = makeSub({
@@ -149,22 +166,21 @@ describe('advanceBillingHistory', () => {
 // =============================================
 
 describe('syncActiveSubscriptionBilling', () => {
-  it('updates stale nextBillDate even when billing history is already current', () => {
+  it('updates stale nextBillDate and fills missing history', () => {
     mockToday('2026-05-22')
     const sub = makeSub({
       cycle: 'yearly',
-      startDate: '2025-03-17',
+      startDate: '2026-03-17',
       nextBillDate: '2026-03-17',
-      billingHistory: [
-        { date: '2025-03-17', amount: 48 },
-        { date: '2026-03-17', amount: 48 },
-      ],
+      billingHistory: [],
     })
 
     const result = syncActiveSubscriptionBilling(sub)
 
     expect(result.nextBillDate).toBe('2027-03-17')
-    expect(result.billingHistory).toEqual(sub.billingHistory)
+    expect(result.billingHistory).toEqual([
+      { date: '2026-03-17', amount: 48 },
+    ])
   })
 
   it('keeps cancelled subscription unchanged', () => {

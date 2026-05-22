@@ -9,7 +9,7 @@
 | # | 类型 | 描述 | 状态 |
 |---|------|------|------|
 | 1 | ✨ 优化 | 代码质量审查，详见 [REVIEW-001](reviews/REVIEW-001-code-quality.md) | ✅ 已完成 |
-| 2 | 🐛 bug | 导入数据后，active 订阅可能存在过期 `nextBillDate` 或缺失已发生的 `billingHistory`，需统一同步到今天 | ✅ 已修复部分：`nextBillDate` 已推进；⏳ 待补齐缺失历史 |
+| 2 | 🐛 bug | 导入数据后，active 订阅可能存在过期 `nextBillDate` 或缺失已发生的 `billingHistory`，需统一同步到今天 | ✅ 已完成 |
 | 3 | 💡 新需求 | 新增完整扣款历史入口，按日期倒序展示所有 `billingHistory` 记录，支持长列表浏览 | ⏳ 待设计 |
 | 4 | 💡 新需求 | 支持同一服务的套餐/价格变化历史，避免 Claude Code 这类从 $125/月变为 $20/月时必须拆成多个独立订阅 | ⏳ 待设计 |
 
@@ -23,8 +23,7 @@
 
 - 当前数据已可从各订阅的 `billingHistory` 聚合出历史流水。
 - 已观察到 11 条订阅中共有 22 条历史记录，可直接作为历史页数据源。
-- 现有缺口：部分 active 订阅存在 `billingHistory` 为空但 `startDate` 已发生的情况，例如 Infuse、Claude active。
-- 后续实现历史页前，应先补齐 active 订阅缺失的已发生扣款记录。
+- 已修复：active 订阅在应用启动和导入时会补齐从 `startDate` 到今天已发生但缺失的扣款记录，并推进 `nextBillDate` 到未来日期。
 
 ### 套餐 / 价格变化
 

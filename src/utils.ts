@@ -114,31 +114,12 @@ export function advanceBillingHistory(sub: Subscription): { billingHistory: Bill
     return { billingHistory: sub.billingHistory, nextBillDate: sub.nextBillDate }
   }
   const today = todayString()
-  const lastDate = sub.billingHistory.length > 0 ? sub.billingHistory[sub.billingHistory.length - 1].date : sub.startDate
-  const nextFromLast = parseLocalDate(lastDate)
-  const todayDate = parseLocalDate(today)
-
-  const newRecords: BillingRecord[] = []
-
-  if (sub.cycle === 'custom' && sub.customCycleDays && sub.customCycleDays > 0) {
-    const cyclMs = sub.customCycleDays * 86400000
-    const cursor = new Date(nextFromLast)
-    while (true) {
-      cursor.setTime(cursor.getTime() + cyclMs)
-      if (cursor > todayDate) break
-      newRecords.push({ date: toLocalDateString(cursor), amount: sub.amount })
-    }
-  } else {
-    const months = CYCLE_MONTHS[sub.cycle] ?? 1
-    const cursor = new Date(nextFromLast)
-    while (true) {
-      cursor.setMonth(cursor.getMonth() + months)
-      if (cursor > todayDate) break
-      newRecords.push({ date: toLocalDateString(cursor), amount: sub.amount })
-    }
-  }
-
-  const billingHistory = [...sub.billingHistory, ...newRecords]
+  const existingDates = new Set(sub.billingHistory.map((record) => record.date))
+  const missingRecords = generateBillingDates(sub.startDate, sub.cycle, sub.customCycleDays, today)
+    .filter((date) => !existingDates.has(date))
+    .map((date) => ({ date, amount: sub.amount }))
+  const billingHistory = [...sub.billingHistory, ...missingRecords]
+    .sort((a, b) => a.date.localeCompare(b.date))
   const nextBillDate = calculateNextBillDate(sub.startDate, sub.cycle, sub.customCycleDays)
   return { billingHistory, nextBillDate }
 }
