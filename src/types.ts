@@ -4,10 +4,22 @@ export type SubscriptionStatus = 'active' | 'cancelled'
 export type ThemeMode = 'auto' | 'light' | 'dark'
 export type TabView = 'dashboard' | 'subscriptions' | 'history'
 export type SubStatusFilter = 'active' | 'cancelled'
+export type PriceChangeMode = 'future' | 'rewrite'
 
 export interface BillingRecord {
   date: string   // "YYYY-MM-DD"
   amount: number
+  currency?: Currency
+  priceSegmentId?: string
+}
+
+export interface PriceSegment {
+  id: string
+  effectiveDate: string
+  amount: number
+  currency: Currency
+  cycle: BillingCycle
+  customCycleDays?: number
 }
 
 export interface BillingHistoryItem {
@@ -43,6 +55,7 @@ export interface Subscription {
   cancelledDate?: string
   note?: string
   billingHistory: BillingRecord[]
+  priceHistory: PriceSegment[]
   createdAt: string
   updatedAt: string
 }

@@ -73,9 +73,23 @@ sub-tracker/
 | `status` | enum | 自动 | `active` / `cancelled` |
 | `cancelledDate` | string (ISO) | 条件 | 取消日期，标记取消时自动记录 |
 | `note` | string | 否 | 备注信息 |
-| `billingHistory` | BillingRecord[] | 自动 | 扣款记录数组，每条 `{ date: string, amount: number }` |
+| `billingHistory` | BillingRecord[] | 自动 | 扣款记录数组，每条包含发生日期、金额、发生时币种 |
+| `priceHistory` | PriceSegment[] | 自动 | 价格 / 币种 / 周期的生效历史 |
 | `createdAt` | string (ISO) | 自动 | 创建时间 |
 | `updatedAt` | string (ISO) | 自动 | 最后修改时间 |
+
+### 3.1.1 价格历史（PriceSegment）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | string | 唯一标识 |
+| `effectiveDate` | string (ISO) | 生效日期 |
+| `amount` | number | 生效后的金额 |
+| `currency` | enum | `CNY` 或 `USD` |
+| `cycle` | enum | `monthly` / `quarterly` / `yearly` / `custom` |
+| `customCycleDays` | number | 当 cycle 为 custom 时使用 |
+
+旧数据在启动和导入时会自动补齐单段 `priceHistory`。
 
 ### 3.2 分类（Category）
 
@@ -181,6 +195,7 @@ App
 - **月度支出**：数学换算（`convertToMonthly`），代表「每月要花多少」，仅统计 active 订阅
 - **年度支出**：基于 `billingHistory` 当年实际扣款记录之和（含 cancelled 订阅的历史记录）
 - 按 `currency` 分组后分别求和
+- 扣款记录如包含自身 `currency`，年度统计与历史页优先使用记录自身币种，避免当前订阅价格变化污染旧记录
 - 分类占比：月度基于数学换算，年度基于 billingHistory，按 `currency` 分开生成独立的饼图数据数组
 - 边界处理：`customCycleDays` 为 0 或负数时视为无效，不参与统计
 

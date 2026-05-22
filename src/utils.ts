@@ -1,5 +1,7 @@
-import type { BillingCycle, BillingHistoryItem, BillingHistoryMonthGroup, BillingRecord, Category, CategoryBreakdownItem, ExportData, ItemBreakdownItem, Subscription, SpendingSummary, ThemeMode } from './types'
+import type { BillingCycle, BillingHistoryItem, BillingHistoryMonthGroup, BillingRecord, Category, CategoryBreakdownItem, ExportData, ItemBreakdownItem, PriceSegment, Subscription, SpendingSummary, ThemeMode } from './types'
 import { BRAND_COLORS, COLOR_PALETTE, CYCLE_MONTHS, DEFAULT_CATEGORIES } from './constants'
+
+type BillingFields = Pick<Subscription, 'amount' | 'currency' | 'cycle' | 'customCycleDays' | 'startDate'>
 
 // Storage
 
@@ -15,6 +17,10 @@ export function loadFromStorage<T>(key: string, fallback: T): T {
 
 export function saveToStorage<T>(key: string, value: T): void {
   localStorage.setItem(key, JSON.stringify(value))
+}
+
+export function generateId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
 
 // Color
@@ -110,8 +116,87 @@ export function generateBillingDates(startDate: string, cycle: BillingCycle, cus
   return dates
 }
 
-export function generateBillingHistory(startDate: string, cycle: BillingCycle, customDays: number | undefined, amount: number, endDate: string): BillingRecord[] {
-  return generateBillingDates(startDate, cycle, customDays, endDate).map((date) => ({ date, amount }))
+function sortPriceHistory(priceHistory: PriceSegment[]): PriceSegment[] {
+  return [...priceHistory].sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate))
+}
+
+export function ensurePriceHistory(sub: Subscription): Subscription {
+  const legacySub = sub as Subscription & { priceHistory?: PriceSegment[] }
+  const priceHistory = legacySub.priceHistory
+  if (Array.isArray(priceHistory) && priceHistory.length > 0) {
+    const sorted = sortPriceHistory(priceHistory)
+    if (sorted.every((segment, index) => segment === priceHistory[index])) return sub
+    return { ...sub, priceHistory: sorted }
+  }
+
+  return {
+    ...sub,
+    priceHistory: [{
+      id: generateId(),
+      effectiveDate: sub.startDate,
+      amount: sub.amount,
+      currency: sub.currency,
+      cycle: sub.cycle,
+      customCycleDays: sub.customCycleDays,
+    }],
+  }
+}
+
+export function getActivePriceSegment(sub: Subscription, date: string): PriceSegment {
+  const normalized = ensurePriceHistory(sub)
+  const segments = sortPriceHistory(normalized.priceHistory)
+  let active = segments[0]
+  for (const segment of segments) {
+    if (segment.effectiveDate <= date) active = segment
+    else break
+  }
+  return active
+}
+
+function advanceBillingDate(date: string, cycle: BillingCycle, customDays?: number): string {
+  const cursor = parseLocalDate(date)
+  if (cycle === 'custom' && customDays && customDays > 0) {
+    cursor.setTime(cursor.getTime() + customDays * 86400000)
+  } else {
+    const months = CYCLE_MONTHS[cycle] ?? 1
+    cursor.setMonth(cursor.getMonth() + months)
+  }
+  return toLocalDateString(cursor)
+}
+
+export function calculateSubscriptionNextBillDate(sub: Subscription): string {
+  const normalized = ensurePriceHistory(sub)
+  const current = sortPriceHistory(normalized.priceHistory)[normalized.priceHistory.length - 1]
+  return calculateNextBillDate(current.effectiveDate, current.cycle, current.customCycleDays)
+}
+
+export function generateBillingHistoryFromPriceHistory(sub: Subscription, endDate: string): BillingRecord[] {
+  const normalized = ensurePriceHistory(sub)
+  const end = parseLocalDate(endDate)
+  let cursor = normalized.startDate
+  const records: BillingRecord[] = []
+
+  while (parseLocalDate(cursor) <= end) {
+    const segment = getActivePriceSegment(normalized, cursor)
+    records.push({
+      date: cursor,
+      amount: segment.amount,
+      currency: segment.currency,
+      priceSegmentId: segment.id,
+    })
+    cursor = advanceBillingDate(cursor, segment.cycle, segment.customCycleDays)
+  }
+
+  return records
+}
+
+export function generateBillingHistory(startDate: string, cycle: BillingCycle, customDays: number | undefined, amount: number, endDate: string, currency?: 'CNY' | 'USD', priceSegmentId?: string): BillingRecord[] {
+  return generateBillingDates(startDate, cycle, customDays, endDate).map((date) => ({
+    date,
+    amount,
+    currency,
+    priceSegmentId,
+  }))
 }
 
 export function advanceBillingHistory(sub: Subscription): { billingHistory: BillingRecord[]; nextBillDate: string } {
@@ -120,30 +205,94 @@ export function advanceBillingHistory(sub: Subscription): { billingHistory: Bill
   }
   const today = todayString()
   const existingDates = new Set(sub.billingHistory.map((record) => record.date))
-  const missingRecords = generateBillingDates(sub.startDate, sub.cycle, sub.customCycleDays, today)
-    .filter((date) => !existingDates.has(date))
-    .map((date) => ({ date, amount: sub.amount }))
-  const billingHistory = [...sub.billingHistory, ...missingRecords]
+  const missingRecords = generateBillingHistoryFromPriceHistory(sub, today)
+    .filter((record) => !existingDates.has(record.date))
+  const normalizedExisting = sub.billingHistory.map((record) => ({
+    ...record,
+    currency: record.currency ?? sub.currency,
+  }))
+  const billingHistory = [...normalizedExisting, ...missingRecords]
     .sort((a, b) => a.date.localeCompare(b.date))
-  const nextBillDate = calculateNextBillDate(sub.startDate, sub.cycle, sub.customCycleDays)
+  const nextBillDate = calculateSubscriptionNextBillDate(sub)
   return { billingHistory, nextBillDate }
 }
 
 export function syncActiveSubscriptionBilling(sub: Subscription): Subscription {
-  if (sub.status !== 'active') return sub
+  const normalized = ensurePriceHistory(sub)
+  if (normalized.status !== 'active') return normalized
 
-  const result = advanceBillingHistory(sub)
+  const result = advanceBillingHistory(normalized)
+  const billingHistoryUnchanged = result.billingHistory.length === normalized.billingHistory.length
+    && result.billingHistory.every((record, index) => {
+      const current = normalized.billingHistory[index]
+      return current
+        && record.date === current.date
+        && record.amount === current.amount
+        && record.currency === current.currency
+        && record.priceSegmentId === current.priceSegmentId
+    })
   if (
-    result.billingHistory.length === sub.billingHistory.length
-    && result.nextBillDate === sub.nextBillDate
+    billingHistoryUnchanged
+    && result.nextBillDate === normalized.nextBillDate
+    && normalized === sub
   ) {
-    return sub
+    return normalized
   }
 
   return {
-    ...sub,
+    ...normalized,
     billingHistory: result.billingHistory,
     nextBillDate: result.nextBillDate,
+  }
+}
+
+export function applyPriceChangeFromDate(sub: Subscription, data: BillingFields, effectiveDate: string): Subscription {
+  const normalized = ensurePriceHistory(sub)
+  const segment: PriceSegment = {
+    id: generateId(),
+    effectiveDate,
+    amount: data.amount,
+    currency: data.currency,
+    cycle: data.cycle,
+    customCycleDays: data.customCycleDays,
+  }
+  const updated: Subscription = {
+    ...normalized,
+    amount: data.amount,
+    currency: data.currency,
+    cycle: data.cycle,
+    customCycleDays: data.customCycleDays,
+    priceHistory: sortPriceHistory([...normalized.priceHistory, segment]),
+  }
+  return {
+    ...updated,
+    nextBillDate: calculateSubscriptionNextBillDate(updated),
+  }
+}
+
+export function rewriteSubscriptionBilling(sub: Subscription, data: BillingFields): Subscription {
+  const segment: PriceSegment = {
+    id: generateId(),
+    effectiveDate: data.startDate,
+    amount: data.amount,
+    currency: data.currency,
+    cycle: data.cycle,
+    customCycleDays: data.customCycleDays,
+  }
+  const updated: Subscription = {
+    ...sub,
+    amount: data.amount,
+    currency: data.currency,
+    cycle: data.cycle,
+    customCycleDays: data.customCycleDays,
+    startDate: data.startDate,
+    priceHistory: [segment],
+  }
+  const today = todayString()
+  return {
+    ...updated,
+    billingHistory: generateBillingHistory(data.startDate, data.cycle, data.customCycleDays, data.amount, today, data.currency, segment.id),
+    nextBillDate: calculateSubscriptionNextBillDate(updated),
   }
 }
 
@@ -233,7 +382,7 @@ export function calcYearlyActualSpending(subscriptions: Subscription[]): { CNY: 
   for (const sub of subscriptions) {
     for (const record of sub.billingHistory) {
       if (record.date.startsWith(yearPrefix)) {
-        result[sub.currency] += record.amount
+        result[record.currency ?? sub.currency] += record.amount
       }
     }
   }
@@ -250,15 +399,11 @@ export function calcYearlyCategoryBreakdown(
   const usdMap = new Map<string, number>()
 
   for (const sub of subscriptions) {
-    const map = sub.currency === 'CNY' ? cnyMap : usdMap
-    let yearTotal = 0
     for (const record of sub.billingHistory) {
       if (record.date.startsWith(yearPrefix)) {
-        yearTotal += record.amount
+        const map = (record.currency ?? sub.currency) === 'CNY' ? cnyMap : usdMap
+        map.set(sub.category, (map.get(sub.category) ?? 0) + record.amount)
       }
-    }
-    if (yearTotal > 0) {
-      map.set(sub.category, (map.get(sub.category) ?? 0) + yearTotal)
     }
   }
 
@@ -288,19 +433,22 @@ export function calcMonthlyItemBreakdown(subscriptions: Subscription[]): { CNY: 
 export function calcYearlyItemBreakdown(subscriptions: Subscription[]): { CNY: ItemBreakdownItem[]; USD: ItemBreakdownItem[] } {
   const currentYear = new Date().getFullYear()
   const yearPrefix = String(currentYear)
-  const cny: ItemBreakdownItem[] = []
-  const usd: ItemBreakdownItem[] = []
+  const cnyMap = new Map<string, ItemBreakdownItem>()
+  const usdMap = new Map<string, ItemBreakdownItem>()
   for (const sub of subscriptions) {
-    let yearTotal = 0
     for (const record of sub.billingHistory) {
-      if (record.date.startsWith(yearPrefix)) yearTotal += record.amount
+      if (!record.date.startsWith(yearPrefix)) continue
+      const map = (record.currency ?? sub.currency) === 'CNY' ? cnyMap : usdMap
+      const existing = map.get(sub.id)
+      if (existing) {
+        existing.value += record.amount
+      } else {
+        map.set(sub.id, { name: sub.name, value: record.amount, color: sub.color, category: sub.category })
+      }
     }
-    if (yearTotal <= 0) continue
-    const item = { name: sub.name, value: yearTotal, color: sub.color, category: sub.category }
-    if (sub.currency === 'CNY') cny.push(item); else usd.push(item)
   }
   const sort = (arr: ItemBreakdownItem[]) => arr.sort((a, b) => b.value - a.value || a.category.localeCompare(b.category) || a.name.localeCompare(b.name))
-  return { CNY: sort(cny), USD: sort(usd) }
+  return { CNY: sort(Array.from(cnyMap.values())), USD: sort(Array.from(usdMap.values())) }
 }
 
 export function buildBillingHistoryGroups(subscriptions: Subscription[]): BillingHistoryMonthGroup[] {
@@ -310,7 +458,7 @@ export function buildBillingHistoryGroups(subscriptions: Subscription[]): Billin
       date: record.date,
       name: sub.name,
       amount: record.amount,
-      currency: sub.currency,
+      currency: record.currency ?? sub.currency,
       category: sub.category,
       color: sub.color,
       status: sub.status,

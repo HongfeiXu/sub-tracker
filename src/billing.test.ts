@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import {
   generateBillingDates,
   generateBillingHistory,
+  generateBillingHistoryFromPriceHistory,
   advanceBillingHistory,
   calcMonthlyItemBreakdown,
   calcYearlyActualSpending,
@@ -9,14 +10,18 @@ import {
   calcYearlyItemBreakdown,
   buildExportData,
   buildBillingHistoryGroups,
+  ensurePriceHistory,
+  getActivePriceSegment,
+  applyPriceChangeFromDate,
   parseImportData,
+  rewriteSubscriptionBilling,
   syncActiveSubscriptionBilling,
 } from './utils'
 import { DEFAULT_CATEGORIES } from './constants'
 import type { Subscription, BillingRecord } from './types'
 
 function makeSub(overrides: Partial<Subscription> = {}): Subscription {
-  return {
+  const base: Subscription = {
     id: 'test-1',
     name: 'Test Sub',
     amount: 48,
@@ -28,10 +33,22 @@ function makeSub(overrides: Partial<Subscription> = {}): Subscription {
     color: '#5B9EF4',
     status: 'active',
     billingHistory: [],
+    priceHistory: [],
     createdAt: '2025-12-01T00:00:00.000Z',
     updatedAt: '2025-12-01T00:00:00.000Z',
-    ...overrides,
   }
+  const merged = { ...base, ...overrides }
+  if (!overrides.priceHistory) {
+    merged.priceHistory = [{
+      id: `${merged.id}-price-1`,
+      effectiveDate: merged.startDate,
+      amount: merged.amount,
+      currency: merged.currency,
+      cycle: merged.cycle,
+      customCycleDays: merged.customCycleDays,
+    }]
+  }
+  return merged
 }
 
 // Mock today as 2026-02-27 for deterministic tests
@@ -112,7 +129,7 @@ describe('advanceBillingHistory', () => {
     const result = advanceBillingHistory(sub)
 
     expect(result.billingHistory).toEqual([
-      { date: '2026-03-17', amount: 48 },
+      { date: '2026-03-17', amount: 48, currency: 'CNY', priceSegmentId: 'test-1-price-1' },
     ])
     expect(result.nextBillDate).toBe('2027-03-17')
   })
@@ -127,9 +144,9 @@ describe('advanceBillingHistory', () => {
     })
     const result = advanceBillingHistory(sub)
     expect(result.billingHistory).toEqual([
-      { date: '2025-12-01', amount: 48 },
-      { date: '2026-01-01', amount: 48 },
-      { date: '2026-02-01', amount: 48 },
+      { date: '2025-12-01', amount: 48, currency: 'CNY' },
+      { date: '2026-01-01', amount: 48, currency: 'CNY', priceSegmentId: 'test-1-price-1' },
+      { date: '2026-02-01', amount: 48, currency: 'CNY', priceSegmentId: 'test-1-price-1' },
     ])
   })
 
@@ -157,7 +174,7 @@ describe('advanceBillingHistory', () => {
     })
     const result = advanceBillingHistory(sub)
     expect(result.billingHistory).toEqual([
-      { date: '2026-02-01', amount: 48 },
+      { date: '2026-02-01', amount: 48, currency: 'CNY' },
     ])
   })
 })
@@ -180,7 +197,7 @@ describe('syncActiveSubscriptionBilling', () => {
 
     expect(result.nextBillDate).toBe('2027-03-17')
     expect(result.billingHistory).toEqual([
-      { date: '2026-03-17', amount: 48 },
+      { date: '2026-03-17', amount: 48, currency: 'CNY', priceSegmentId: 'test-1-price-1' },
     ])
   })
 
@@ -197,6 +214,113 @@ describe('syncActiveSubscriptionBilling', () => {
     const result = syncActiveSubscriptionBilling(sub)
 
     expect(result).toBe(sub)
+  })
+})
+
+// =============================================
+// priceHistory
+// =============================================
+
+describe('priceHistory', () => {
+  it('migrates legacy subscription to a single price segment', () => {
+    const { priceHistory: _priceHistory, ...legacy } = makeSub()
+    const result = ensurePriceHistory(legacy as Subscription)
+
+    expect(result.priceHistory).toHaveLength(1)
+    expect(result.priceHistory[0]).toMatchObject({
+      effectiveDate: '2025-12-01',
+      amount: 48,
+      currency: 'CNY',
+      cycle: 'monthly',
+    })
+  })
+
+  it('finds the active price segment for a date', () => {
+    const sub = makeSub({
+      priceHistory: [
+        { id: 'old', effectiveDate: '2026-01-20', amount: 125, currency: 'USD', cycle: 'monthly' },
+        { id: 'new', effectiveDate: '2026-05-20', amount: 20, currency: 'USD', cycle: 'monthly' },
+      ],
+    })
+
+    expect(getActivePriceSegment(sub, '2026-04-20').id).toBe('old')
+    expect(getActivePriceSegment(sub, '2026-05-20').id).toBe('new')
+  })
+
+  it('generates billing history with the price active at each billing date', () => {
+    const sub = makeSub({
+      name: 'Claude',
+      amount: 20,
+      currency: 'USD',
+      startDate: '2026-01-20',
+      priceHistory: [
+        { id: 'claude-125', effectiveDate: '2026-01-20', amount: 125, currency: 'USD', cycle: 'monthly' },
+        { id: 'claude-20', effectiveDate: '2026-05-20', amount: 20, currency: 'USD', cycle: 'monthly' },
+      ],
+    })
+
+    const result = generateBillingHistoryFromPriceHistory(sub, '2026-05-22')
+
+    expect(result).toEqual([
+      { date: '2026-01-20', amount: 125, currency: 'USD', priceSegmentId: 'claude-125' },
+      { date: '2026-02-20', amount: 125, currency: 'USD', priceSegmentId: 'claude-125' },
+      { date: '2026-03-20', amount: 125, currency: 'USD', priceSegmentId: 'claude-125' },
+      { date: '2026-04-20', amount: 125, currency: 'USD', priceSegmentId: 'claude-125' },
+      { date: '2026-05-20', amount: 20, currency: 'USD', priceSegmentId: 'claude-20' },
+    ])
+  })
+
+  it('keeps existing history when price changes from the next bill date', () => {
+    mockToday('2026-05-22')
+    const sub = makeSub({
+      amount: 125,
+      currency: 'USD',
+      startDate: '2026-01-20',
+      nextBillDate: '2026-05-20',
+      billingHistory: [
+        { date: '2026-01-20', amount: 125, currency: 'USD', priceSegmentId: 'old' },
+      ],
+      priceHistory: [
+        { id: 'old', effectiveDate: '2026-01-20', amount: 125, currency: 'USD', cycle: 'monthly' },
+      ],
+    })
+
+    const result = applyPriceChangeFromDate(sub, {
+      amount: 20,
+      currency: 'USD',
+      cycle: 'monthly',
+      customCycleDays: undefined,
+      startDate: '2026-01-20',
+    }, '2026-05-20')
+
+    expect(result.amount).toBe(20)
+    expect(result.billingHistory).toEqual(sub.billingHistory)
+    expect(result.priceHistory).toHaveLength(2)
+    expect(result.priceHistory[1]).toMatchObject({ effectiveDate: '2026-05-20', amount: 20 })
+    expect(result.nextBillDate).toBe('2026-06-20')
+  })
+
+  it('rewrites all history when correcting billing data', () => {
+    mockToday('2026-02-27')
+    const sub = makeSub({
+      startDate: '2025-12-01',
+      billingHistory: [
+        { date: '2025-12-01', amount: 48 },
+      ],
+    })
+
+    const result = rewriteSubscriptionBilling(sub, {
+      amount: 68,
+      currency: 'CNY',
+      cycle: 'monthly',
+      customCycleDays: undefined,
+      startDate: '2026-01-01',
+    })
+
+    expect(result.billingHistory.map((record) => ({ date: record.date, amount: record.amount, currency: record.currency }))).toEqual([
+      { date: '2026-01-01', amount: 68, currency: 'CNY' },
+      { date: '2026-02-01', amount: 68, currency: 'CNY' },
+    ])
   })
 })
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import type { Currency, BillingCycle, Category, Subscription } from '../types'
+import type { Currency, BillingCycle, Category, PriceChangeMode, Subscription } from '../types'
 import { COLOR_PALETTE, CYCLE_LABELS, DEFAULT_CATEGORIES } from '../constants'
 import { todayString, matchBrandColor, calculateNextBillDate } from '../utils'
 import { CloseIcon } from './icons'
@@ -17,6 +17,8 @@ interface DrawerForm {
   note: string
 }
 
+type SubscriptionFormData = Omit<Subscription, 'id' | 'createdAt' | 'updatedAt' | 'nextBillDate' | 'status' | 'cancelledDate' | 'billingHistory' | 'priceHistory'>
+
 const defaultForm: DrawerForm = {
   name: '',
   amount: '',
@@ -33,8 +35,8 @@ export interface DrawerProps {
   open: boolean
   editingSub: Subscription | null
   allCategories: Category[]
-  onSave: (data: Omit<Subscription, 'id' | 'createdAt' | 'updatedAt' | 'nextBillDate' | 'status' | 'cancelledDate' | 'billingHistory'>) => void
-  onUpdate: (id: string, data: Partial<Subscription>) => void
+  onSave: (data: SubscriptionFormData) => void
+  onUpdate: (id: string, data: Partial<Subscription>, priceChangeMode?: PriceChangeMode) => void
   onDelete: (id: string) => void
   onCancel: () => void
   onToggleStatus: (id: string) => void
@@ -47,6 +49,7 @@ export function SubscriptionDrawer({ open, editingSub, allCategories, onSave, on
   const [showNewCategory, setShowNewCategory] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [pendingBillingChange, setPendingBillingChange] = useState<SubscriptionFormData | null>(null)
 
   // Reset form when opening
   useEffect(() => {
@@ -69,6 +72,7 @@ export function SubscriptionDrawer({ open, editingSub, allCategories, onSave, on
     setShowNewCategory(false)
     setNewCategoryName('')
     setShowDeleteConfirm(false)
+    setPendingBillingChange(null)
   }, [open, editingSub])
 
   // Brand color matching on name change
@@ -111,10 +115,25 @@ export function SubscriptionDrawer({ open, editingSub, allCategories, onSave, on
     }
 
     if (editingSub) {
+      const billingChanged = data.amount !== editingSub.amount
+        || data.currency !== editingSub.currency
+        || data.cycle !== editingSub.cycle
+        || data.customCycleDays !== editingSub.customCycleDays
+        || data.startDate !== editingSub.startDate
+      if (billingChanged) {
+        setPendingBillingChange(data)
+        return
+      }
       onUpdate(editingSub.id, { ...data, updatedAt: new Date().toISOString(), nextBillDate: previewNextBillDate })
     } else {
       onSave(data)
     }
+  }
+
+  const confirmBillingChange = (mode: PriceChangeMode) => {
+    if (!editingSub || !pendingBillingChange) return
+    onUpdate(editingSub.id, { ...pendingBillingChange, updatedAt: new Date().toISOString() }, mode)
+    setPendingBillingChange(null)
   }
 
   const handleAddCategory = () => {
@@ -308,7 +327,7 @@ export function SubscriptionDrawer({ open, editingSub, allCategories, onSave, on
         </div>
 
         {/* Actions */}
-        <div className="px-5 py-4 border-t border-[var(--color-divider)] space-y-3">
+        <div className="sticky bottom-0 bg-[var(--color-bg)] px-5 py-4 border-t border-[var(--color-divider)] space-y-3">
           <div className="flex gap-3">
             <button onClick={onCancel} className="flex-1 py-3 text-sm font-medium rounded-xl border border-[var(--color-divider)] text-[var(--color-text-secondary)]">
               取消
@@ -342,6 +361,39 @@ export function SubscriptionDrawer({ open, editingSub, allCategories, onSave, on
           onConfirm={() => { onDelete(editingSub.id); setShowDeleteConfirm(false) }}
           onCancel={() => setShowDeleteConfirm(false)}
         />
+      )}
+
+      {pendingBillingChange && (
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 px-5 py-6">
+          <div className="w-full max-w-sm rounded-2xl bg-[var(--color-card)] p-5 shadow-xl">
+            <h3 className="text-base font-semibold text-[var(--color-text-primary)] mb-2">计费信息发生变化</h3>
+            <p className="text-sm text-[var(--color-text-secondary)] mb-4">
+              选择这次修改如何影响扣款历史。
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => confirmBillingChange('future')}
+                className="w-full rounded-xl bg-[var(--color-accent)] px-4 py-3 text-left text-white"
+              >
+                <span className="block text-sm font-semibold">从下一次扣款开始生效</span>
+                <span className="block text-xs opacity-90 mt-1">保留已有扣款记录，新价格进入新的价格阶段。</span>
+              </button>
+              <button
+                onClick={() => confirmBillingChange('rewrite')}
+                className="w-full rounded-xl border border-[var(--color-divider)] px-4 py-3 text-left text-[var(--color-text-primary)]"
+              >
+                <span className="block text-sm font-semibold">修正整个订阅历史</span>
+                <span className="block text-xs text-[var(--color-text-secondary)] mt-1">用于录错信息，会按当前表单重算历史扣款。</span>
+              </button>
+              <button
+                onClick={() => setPendingBillingChange(null)}
+                className="w-full py-2 text-sm text-[var(--color-text-secondary)]"
+              >
+                返回编辑
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   )
