@@ -1,4 +1,4 @@
-import type { BillingCycle, BillingRecord, Category, CategoryBreakdownItem, ExportData, ItemBreakdownItem, Subscription, SpendingSummary, ThemeMode } from './types'
+import type { BillingCycle, BillingHistoryItem, BillingHistoryMonthGroup, BillingRecord, Category, CategoryBreakdownItem, ExportData, ItemBreakdownItem, Subscription, SpendingSummary, ThemeMode } from './types'
 import { BRAND_COLORS, COLOR_PALETTE, CYCLE_MONTHS, DEFAULT_CATEGORIES } from './constants'
 
 // Storage
@@ -71,6 +71,11 @@ export function parseLocalDate(s: string): Date {
 export function formatDate(dateStr: string): string {
   const d = new Date(dateStr)
   return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+export function formatMonthLabel(month: string): string {
+  const [year, monthPart] = month.split('-')
+  return `${year}年${monthPart}月`
 }
 
 export function todayString(): string {
@@ -296,6 +301,36 @@ export function calcYearlyItemBreakdown(subscriptions: Subscription[]): { CNY: I
   }
   const sort = (arr: ItemBreakdownItem[]) => arr.sort((a, b) => b.value - a.value || a.category.localeCompare(b.category) || a.name.localeCompare(b.name))
   return { CNY: sort(cny), USD: sort(usd) }
+}
+
+export function buildBillingHistoryGroups(subscriptions: Subscription[]): BillingHistoryMonthGroup[] {
+  const items: BillingHistoryItem[] = subscriptions.flatMap((sub) =>
+    sub.billingHistory.map((record, index) => ({
+      id: `${sub.id}-${record.date}-${index}`,
+      date: record.date,
+      name: sub.name,
+      amount: record.amount,
+      currency: sub.currency,
+      category: sub.category,
+      color: sub.color,
+      status: sub.status,
+    })),
+  ).sort((a, b) => b.date.localeCompare(a.date) || a.name.localeCompare(b.name))
+
+  const groups = new Map<string, BillingHistoryMonthGroup>()
+  for (const item of items) {
+    const month = item.date.slice(0, 7)
+    const group = groups.get(month) ?? { month, totalCNY: 0, totalUSD: 0, items: [] }
+    if (item.currency === 'CNY') {
+      group.totalCNY += item.amount
+    } else {
+      group.totalUSD += item.amount
+    }
+    group.items.push(item)
+    groups.set(month, group)
+  }
+
+  return Array.from(groups.values())
 }
 
 // Export / Import

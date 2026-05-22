@@ -8,6 +8,7 @@ import {
   calcYearlyCategoryBreakdown,
   calcYearlyItemBreakdown,
   buildExportData,
+  buildBillingHistoryGroups,
   parseImportData,
   syncActiveSubscriptionBilling,
 } from './utils'
@@ -283,6 +284,45 @@ describe('calcYearlyActualSpending', () => {
     const result = calcYearlyActualSpending([sub1, sub2])
     expect(result.CNY).toBe(96)
     expect(result.USD).toBe(10)
+  })
+})
+
+// =============================================
+// buildBillingHistoryGroups
+// =============================================
+
+describe('buildBillingHistoryGroups', () => {
+  it('groups billing records by month in descending date order', () => {
+    const sub1 = makeSub({
+      id: 'sub-1',
+      name: 'iCloud',
+      amount: 68,
+      currency: 'CNY',
+      category: '云存储',
+      billingHistory: [
+        { date: '2026-04-23', amount: 68 },
+        { date: '2026-05-23', amount: 68 },
+      ],
+    })
+    const sub2 = makeSub({
+      id: 'sub-2',
+      name: 'Claude',
+      amount: 20,
+      currency: 'USD',
+      billingHistory: [
+        { date: '2026-05-20', amount: 20 },
+      ],
+    })
+
+    const result = buildBillingHistoryGroups([sub1, sub2])
+
+    expect(result).toHaveLength(2)
+    expect(result[0].month).toBe('2026-05')
+    expect(result[0].totalCNY).toBe(68)
+    expect(result[0].totalUSD).toBe(20)
+    expect(result[0].items.map((item) => item.name)).toEqual(['iCloud', 'Claude'])
+    expect(result[1].month).toBe('2026-04')
+    expect(result[1].items.map((item) => item.name)).toEqual(['iCloud'])
   })
 })
 

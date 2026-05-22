@@ -19,6 +19,7 @@ export function TabBar({ activeTab, onTabChange }: { activeTab: TabView; onTabCh
   const tabs: { key: TabView; label: string }[] = [
     { key: 'dashboard', label: '总览' },
     { key: 'subscriptions', label: '订阅列表' },
+    { key: 'history', label: '记录' },
   ]
   return (
     <div className="flex mx-5 mb-4 p-1 rounded-xl bg-[var(--color-card)]">

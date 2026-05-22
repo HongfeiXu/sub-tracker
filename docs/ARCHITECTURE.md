@@ -105,13 +105,14 @@ sub-tracker/
 ```
 App
 ├── Header                  # 顶部栏（应用名称 + 设置入口）
-├── TabBar                  # Tab 切换（总览 | 订阅列表）
+├── TabBar                  # Tab 切换（总览 | 订阅列表 | 记录）
 ├── DashboardView           # 总览页
 │   ├── StatsCard           # 月度/年度统计卡片（含环形图）
 │   └── UpcomingList        # 即将扣款列表
 ├── SubscriptionsView       # 订阅列表页
 │   ├── StatusFilter        # 生效中/已取消 筛选
 │   └── SubscriptionCard    # 单条订阅卡片
+├── BillingHistoryView      # 扣款记录页，按月份分组展示 billingHistory
 ├── SubscriptionDrawer      # 添加/编辑底部抽屉
 ├── SettingsPanel           # 设置面板
 └── FAB                     # 浮动添加按钮
@@ -147,7 +148,7 @@ App
 
 - `subscriptions`：订阅列表
 - `theme`：主题偏好
-- `activeTab`：当前 Tab（dashboard / subscriptions）
+- `activeTab`：当前 Tab（dashboard / subscriptions / history）
 - `editingId`：当前编辑的订阅 ID（null 表示新建）
 - `showSettings`：设置面板是否打开
 

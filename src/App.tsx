@@ -3,7 +3,7 @@ import type { Subscription, Category, ThemeMode, TabView } from './types'
 import { STORAGE_KEYS } from './constants'
 import { loadFromStorage, saveToStorage, getAllCategories, assignCategoryColor, calculateNextBillDate, generateBillingHistory, syncActiveSubscriptionBilling, todayString, applyTheme } from './utils'
 import type { ExportData } from './types'
-import { Header, TabBar, FAB, DashboardView, SubscriptionsView, SubscriptionDrawer, SettingsPanel } from './components/index'
+import { Header, TabBar, FAB, DashboardView, SubscriptionsView, BillingHistoryView, SubscriptionDrawer, SettingsPanel } from './components/index'
 
 export default function App() {
   const [theme, setTheme] = useState<ThemeMode>(() => loadFromStorage(STORAGE_KEYS.THEME, 'auto' as ThemeMode))
@@ -117,10 +117,14 @@ export default function App() {
         <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
 
         <main className="px-5 pb-24">
-          {activeTab === 'dashboard' ? (
+          {activeTab === 'dashboard' && (
             <DashboardView subscriptions={subscriptions} allCategories={allCategories} />
-          ) : (
+          )}
+          {activeTab === 'subscriptions' && (
             <SubscriptionsView subscriptions={subscriptions} onEdit={openEditDrawer} />
+          )}
+          {activeTab === 'history' && (
+            <BillingHistoryView subscriptions={subscriptions} />
           )}
 
         </main>

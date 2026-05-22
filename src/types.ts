@@ -2,12 +2,30 @@ export type Currency = 'CNY' | 'USD'
 export type BillingCycle = 'monthly' | 'quarterly' | 'yearly' | 'custom'
 export type SubscriptionStatus = 'active' | 'cancelled'
 export type ThemeMode = 'auto' | 'light' | 'dark'
-export type TabView = 'dashboard' | 'subscriptions'
+export type TabView = 'dashboard' | 'subscriptions' | 'history'
 export type SubStatusFilter = 'active' | 'cancelled'
 
 export interface BillingRecord {
   date: string   // "YYYY-MM-DD"
   amount: number
+}
+
+export interface BillingHistoryItem {
+  id: string
+  date: string
+  name: string
+  amount: number
+  currency: Currency
+  category: string
+  color: string
+  status: SubscriptionStatus
+}
+
+export interface BillingHistoryMonthGroup {
+  month: string
+  totalCNY: number
+  totalUSD: number
+  items: BillingHistoryItem[]
 }
 
 export interface Subscription {
