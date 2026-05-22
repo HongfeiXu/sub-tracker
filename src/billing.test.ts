@@ -9,6 +9,7 @@ import {
   calcYearlyItemBreakdown,
   buildExportData,
   parseImportData,
+  syncActiveSubscriptionBilling,
 } from './utils'
 import { DEFAULT_CATEGORIES } from './constants'
 import type { Subscription, BillingRecord } from './types'
@@ -140,6 +141,45 @@ describe('advanceBillingHistory', () => {
     expect(result.billingHistory).toEqual([
       { date: '2026-02-01', amount: 48 },
     ])
+  })
+})
+
+// =============================================
+// syncActiveSubscriptionBilling
+// =============================================
+
+describe('syncActiveSubscriptionBilling', () => {
+  it('updates stale nextBillDate even when billing history is already current', () => {
+    mockToday('2026-05-22')
+    const sub = makeSub({
+      cycle: 'yearly',
+      startDate: '2025-03-17',
+      nextBillDate: '2026-03-17',
+      billingHistory: [
+        { date: '2025-03-17', amount: 48 },
+        { date: '2026-03-17', amount: 48 },
+      ],
+    })
+
+    const result = syncActiveSubscriptionBilling(sub)
+
+    expect(result.nextBillDate).toBe('2027-03-17')
+    expect(result.billingHistory).toEqual(sub.billingHistory)
+  })
+
+  it('keeps cancelled subscription unchanged', () => {
+    mockToday('2026-05-22')
+    const sub = makeSub({
+      status: 'cancelled',
+      nextBillDate: '2026-03-17',
+      billingHistory: [
+        { date: '2026-03-17', amount: 48 },
+      ],
+    })
+
+    const result = syncActiveSubscriptionBilling(sub)
+
+    expect(result).toBe(sub)
   })
 })
 

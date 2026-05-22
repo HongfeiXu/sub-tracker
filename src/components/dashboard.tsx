@@ -168,7 +168,7 @@ export function UpcomingList({ subscriptions }: { subscriptions: Subscription[] 
       })
   }, [subscriptions])
 
-  const within30 = sorted.filter((item) => item.daysDiff <= 30)
+  const within30 = sorted.filter((item) => item.daysDiff >= 0 && item.daysDiff <= 30)
   const beyond30 = sorted.filter((item) => item.daysDiff > 30)
   const displayed = showAll ? sorted : within30
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import type { Subscription, Category, ThemeMode, TabView } from './types'
 import { STORAGE_KEYS } from './constants'
-import { loadFromStorage, saveToStorage, getAllCategories, assignCategoryColor, calculateNextBillDate, generateBillingHistory, advanceBillingHistory, todayString, applyTheme } from './utils'
+import { loadFromStorage, saveToStorage, getAllCategories, assignCategoryColor, calculateNextBillDate, generateBillingHistory, syncActiveSubscriptionBilling, todayString, applyTheme } from './utils'
 import type { ExportData } from './types'
 import { Header, TabBar, FAB, DashboardView, SubscriptionsView, SubscriptionDrawer, SettingsPanel } from './components/index'
 
@@ -20,16 +20,8 @@ export default function App() {
   // Auto-advance billing history on app load
   useEffect(() => {
     setSubscriptions((prev) => {
-      let changed = false
-      const updated = prev.map((sub) => {
-        if (sub.status !== 'active') return sub
-        const result = advanceBillingHistory(sub)
-        if (result.billingHistory.length !== sub.billingHistory.length) {
-          changed = true
-          return { ...sub, billingHistory: result.billingHistory, nextBillDate: result.nextBillDate }
-        }
-        return sub
-      })
+      const updated = prev.map(syncActiveSubscriptionBilling)
+      const changed = updated.some((sub, index) => sub !== prev[index])
       return changed ? updated : prev
     })
   }, [])
@@ -50,7 +42,7 @@ export default function App() {
   const handleSettingsClick = useCallback(() => setShowSettings((p) => !p), [])
 
   const handleImport = useCallback((data: ExportData) => {
-    setSubscriptions(data.subscriptions)
+    setSubscriptions(data.subscriptions.map(syncActiveSubscriptionBilling))
     setCustomCategories(data.categories ?? [])
   }, [])
 

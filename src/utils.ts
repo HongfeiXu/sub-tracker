@@ -143,6 +143,24 @@ export function advanceBillingHistory(sub: Subscription): { billingHistory: Bill
   return { billingHistory, nextBillDate }
 }
 
+export function syncActiveSubscriptionBilling(sub: Subscription): Subscription {
+  if (sub.status !== 'active') return sub
+
+  const result = advanceBillingHistory(sub)
+  if (
+    result.billingHistory.length === sub.billingHistory.length
+    && result.nextBillDate === sub.nextBillDate
+  ) {
+    return sub
+  }
+
+  return {
+    ...sub,
+    billingHistory: result.billingHistory,
+    nextBillDate: result.nextBillDate,
+  }
+}
+
 // Categories
 
 export function getAllCategories(customCategories: Category[]): Category[] {
