@@ -248,6 +248,98 @@ describe('reactivateSubscription', () => {
       { date: '2026-04-04', amount: 20, currency: 'USD', priceSegmentId: 'test-1-price-1' },
     ])
   })
+
+  it('does not fill a future scheduled record after the cancellation date', () => {
+    mockToday('2026-04-21')
+    const sub = makeSub({
+      amount: 20,
+      currency: 'USD',
+      status: 'cancelled',
+      startDate: '2026-03-04',
+      nextBillDate: '',
+      cancelledDate: '2026-03-20',
+      billingHistory: [
+        { date: '2026-03-04', amount: 20, currency: 'USD' },
+      ],
+    })
+
+    const result = reactivateSubscription(sub)
+
+    expect(result.nextBillDate).toBe('2026-05-04')
+    expect(result.billingHistory).toEqual([
+      { date: '2026-03-04', amount: 20, currency: 'USD' },
+    ])
+  })
+
+  it('fills a scheduled record when cancellation date is exactly the billing date', () => {
+    mockToday('2026-04-21')
+    const sub = makeSub({
+      amount: 20,
+      currency: 'USD',
+      status: 'cancelled',
+      startDate: '2026-03-04',
+      nextBillDate: '',
+      cancelledDate: '2026-04-04',
+      billingHistory: [
+        { date: '2026-03-04', amount: 20, currency: 'USD' },
+      ],
+    })
+
+    const result = reactivateSubscription(sub)
+
+    expect(result.billingHistory).toEqual([
+      { date: '2026-03-04', amount: 20, currency: 'USD' },
+      { date: '2026-04-04', amount: 20, currency: 'USD', priceSegmentId: 'test-1-price-1' },
+    ])
+  })
+
+  it('fills multiple scheduled records that occurred before cancellation', () => {
+    mockToday('2026-06-20')
+    const sub = makeSub({
+      amount: 20,
+      currency: 'USD',
+      status: 'cancelled',
+      startDate: '2026-03-04',
+      nextBillDate: '',
+      cancelledDate: '2026-06-10',
+      billingHistory: [
+        { date: '2026-03-04', amount: 20, currency: 'USD' },
+      ],
+    })
+
+    const result = reactivateSubscription(sub)
+
+    expect(result.nextBillDate).toBe('2026-07-04')
+    expect(result.billingHistory).toEqual([
+      { date: '2026-03-04', amount: 20, currency: 'USD' },
+      { date: '2026-04-04', amount: 20, currency: 'USD', priceSegmentId: 'test-1-price-1' },
+      { date: '2026-05-04', amount: 20, currency: 'USD', priceSegmentId: 'test-1-price-1' },
+      { date: '2026-06-04', amount: 20, currency: 'USD', priceSegmentId: 'test-1-price-1' },
+    ])
+  })
+
+  it('does not fill records during a long cancelled period before reactivation', () => {
+    mockToday('2026-09-20')
+    const sub = makeSub({
+      amount: 20,
+      currency: 'USD',
+      status: 'cancelled',
+      startDate: '2026-03-04',
+      nextBillDate: '',
+      cancelledDate: '2026-04-10',
+      billingHistory: [
+        { date: '2026-03-04', amount: 20, currency: 'USD' },
+      ],
+    })
+
+    const result = reactivateSubscription(sub)
+
+    expect(result.nextBillDate).toBe('2026-10-04')
+    expect(result.billingHistory).toEqual([
+      { date: '2026-03-04', amount: 20, currency: 'USD' },
+      { date: '2026-04-04', amount: 20, currency: 'USD', priceSegmentId: 'test-1-price-1' },
+    ])
+  })
 })
 
 // =============================================
@@ -300,6 +392,30 @@ describe('priceHistory', () => {
       { date: '2026-03-20', amount: 125, currency: 'USD', priceSegmentId: 'claude-125' },
       { date: '2026-04-20', amount: 125, currency: 'USD', priceSegmentId: 'claude-125' },
       { date: '2026-05-20', amount: 20, currency: 'USD', priceSegmentId: 'claude-20' },
+    ])
+  })
+
+  it('uses the new price only for billing dates on or after its effective date', () => {
+    const sub = makeSub({
+      name: 'Claude',
+      amount: 20,
+      currency: 'USD',
+      startDate: '2026-01-20',
+      priceHistory: [
+        { id: 'old', effectiveDate: '2026-01-20', amount: 125, currency: 'USD', cycle: 'monthly' },
+        { id: 'new', effectiveDate: '2026-05-21', amount: 20, currency: 'USD', cycle: 'monthly' },
+      ],
+    })
+
+    const result = generateBillingHistoryFromPriceHistory(sub, '2026-06-22')
+
+    expect(result).toEqual([
+      { date: '2026-01-20', amount: 125, currency: 'USD', priceSegmentId: 'old' },
+      { date: '2026-02-20', amount: 125, currency: 'USD', priceSegmentId: 'old' },
+      { date: '2026-03-20', amount: 125, currency: 'USD', priceSegmentId: 'old' },
+      { date: '2026-04-20', amount: 125, currency: 'USD', priceSegmentId: 'old' },
+      { date: '2026-05-20', amount: 125, currency: 'USD', priceSegmentId: 'old' },
+      { date: '2026-06-20', amount: 20, currency: 'USD', priceSegmentId: 'new' },
     ])
   })
 
@@ -440,6 +556,22 @@ describe('calcYearlyActualSpending', () => {
     expect(result.CNY).toBe(96)
     expect(result.USD).toBe(10)
   })
+
+  it('uses record currency instead of current subscription currency', () => {
+    mockToday('2026-02-27')
+    const sub = makeSub({
+      currency: 'CNY',
+      billingHistory: [
+        { date: '2026-01-20', amount: 125, currency: 'USD' },
+        { date: '2026-02-20', amount: 20, currency: 'USD' },
+      ],
+    })
+
+    const result = calcYearlyActualSpending([sub])
+
+    expect(result.CNY).toBe(0)
+    expect(result.USD).toBe(145)
+  })
 })
 
 // =============================================
@@ -478,6 +610,21 @@ describe('buildBillingHistoryGroups', () => {
     expect(result[0].items.map((item) => item.name)).toEqual(['iCloud', 'Claude'])
     expect(result[1].month).toBe('2026-04')
     expect(result[1].items.map((item) => item.name)).toEqual(['iCloud'])
+  })
+
+  it('uses record currency for monthly totals', () => {
+    const sub = makeSub({
+      currency: 'CNY',
+      billingHistory: [
+        { date: '2026-05-20', amount: 20, currency: 'USD' },
+        { date: '2026-05-23', amount: 68, currency: 'CNY' },
+      ],
+    })
+
+    const result = buildBillingHistoryGroups([sub])
+
+    expect(result[0].totalCNY).toBe(68)
+    expect(result[0].totalUSD).toBe(20)
   })
 })
 
